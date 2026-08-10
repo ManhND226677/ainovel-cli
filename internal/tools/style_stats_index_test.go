@@ -62,7 +62,7 @@ func TestStyleStatsIndexSurfacesMissingCompletedChapter(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := NewStyleStatsIndex(st).Snapshot([]int{1}, nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "第 1 章已标记完成但终稿不存在") {
+	if err == nil || !strings.Contains(err.Error(), "chapter 1 marked completed but final draft does not exist") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

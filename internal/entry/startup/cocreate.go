@@ -140,7 +140,7 @@ func (s *CoCreateSession) BuildPlan() (Plan, error) {
 	}
 	return Plan{
 		Mode:        ModeCoCreate,
-		DisplayName: "共创规划",
+		DisplayName: "Kế hoạch đồng sáng tạo",
 		RawPrompt:   s.DraftPrompt(),
 	}, nil
 }

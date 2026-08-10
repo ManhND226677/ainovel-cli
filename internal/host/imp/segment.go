@@ -1,4 +1,4 @@
-package imp
+﻿package imp
 
 import (
 	"context"
@@ -71,7 +71,7 @@ func resolveSegmentation(normalized []byte, units []SourceUnit, decisions []Boun
 	// 前置契约：units 必须按 (Line,Part) 数值序排列（禁止 ID 字典序）。
 	for i := 1; i < len(units); i++ {
 		if !unitLess(units[i-1], units[i]) {
-			return nil, fmt.Errorf("SourceUnit 未按 (Line,Part) 数值序排列：%s 后接 %s", units[i-1].ID, units[i].ID)
+			return nil, fmt.Errorf("SourceUnit not in (Line,Part) numerical order: %s followed by %s", units[i-1].ID, units[i].ID)
 		}
 	}
 	unitByID := make(map[string]SourceUnit, len(units))
@@ -88,7 +88,7 @@ func resolveSegmentation(normalized []byte, units []SourceUnit, decisions []Boun
 		switch d.Kind {
 		case kindChapter, kindGroup, kindFrontMatter, kindBackMatter:
 		default:
-			return nil, fmt.Errorf("边界[%d] kind 非法：%q", i, d.Kind)
+			return nil, fmt.Errorf("boundary[%d] kind invalid: %q", i, d.Kind)
 		}
 		b, err := resolveBoundaryByte(unitByID, d.UnitID, d.Anchor)
 		if err != nil {
@@ -178,7 +178,7 @@ func resolveSegmentation(normalized []byte, units []SourceUnit, decisions []Boun
 		}
 	}
 	if chapterNo == 0 {
-		return nil, fmt.Errorf("切分未产出任何章节（group 不计入章节）")
+		return nil, fmt.Errorf("segmentation produced no chapters (groups do not count as chapters)")
 	}
 	// 同名章节是"同章被误切"的确定性信号（有标题规约的源里章名不该重复），只记 Notes
 	// 交确认预览人工核对（Notes 非空即阻断 --yes）——是否合并不由 Go 裁定。
@@ -369,7 +369,7 @@ func Segment(ctx context.Context, m callModel, systemPrompt string, normalized [
 				}
 				return append(left, right...), nil
 			}
-			return nil, fmt.Errorf("切分区间 %s..%s：%w", lo.ID, hi.ID, err)
+			return nil, fmt.Errorf("segment range %s..%s: %w", lo.ID, hi.ID, err)
 		}
 		// 上下文区边界归相邻块管辖（它会在自己的 owned 区间再报告一次），Go 直接裁掉：
 		// 坐标纪律由代码执行，语义重试只留给真正的语义失败——旧行为对越界反馈重问，
@@ -390,7 +390,7 @@ func Segment(ctx context.Context, m callModel, systemPrompt string, normalized [
 		}
 		if w != nil {
 			if err := writeArtifact(w, rel, want, boundaryBatch{Boundaries: kept}); err != nil {
-				return nil, fmt.Errorf("落盘切分块 %s..%s：%w", lo.ID, hi.ID, err)
+				return nil, fmt.Errorf("save segment block %s..%s: %w", lo.ID, hi.ID, err)
 			}
 		}
 		return kept, nil
@@ -415,7 +415,7 @@ func Segment(ctx context.Context, m callModel, systemPrompt string, normalized [
 			}
 		}
 		raw, _ := json.MarshalIndent(decisions, "", "  ")
-		return nil, &errSemantic{Raw: string(raw), Err: fmt.Errorf("整合全书切分失败（%s）：%w", hint, err)}
+		return nil, &errSemantic{Raw: string(raw), Err: fmt.Errorf("integrate full book segmentation failed (%s): %w", hint, err)}
 	}
 	return seg, nil
 }
@@ -473,10 +473,10 @@ func (v chunkValidator) validate(bs []BoundaryDecision) error {
 	first := -1
 	for _, b := range bs {
 		if b.UnitID == "" {
-			return fmt.Errorf("边界缺 unit_id")
+			return fmt.Errorf("boundary missing unit_id")
 		}
 		if !v.projIDs[b.UnitID] {
-			return fmt.Errorf("边界 unit_id %q 不存在于本次投影中", b.UnitID)
+			return fmt.Errorf("boundary unit_id %q not in current projection", b.UnitID)
 		}
 		if !v.ownedIDs[b.UnitID] {
 			continue
@@ -484,7 +484,7 @@ func (v chunkValidator) validate(bs []BoundaryDecision) error {
 		switch b.Kind {
 		case kindChapter, kindGroup, kindFrontMatter, kindBackMatter:
 		default:
-			return fmt.Errorf("边界 %s kind 非法：%q（只能是 chapter/group/front_matter/back_matter）", b.UnitID, b.Kind)
+			return fmt.Errorf("boundary %s kind invalid: %q (must be chapter/group/front_matter/back_matter)", b.UnitID, b.Kind)
 		}
 		at, err := resolveBoundaryByte(v.unitByID, b.UnitID, b.Anchor)
 		if err != nil {
@@ -496,7 +496,7 @@ func (v chunkValidator) validate(bs []BoundaryDecision) error {
 		// front/back matter 的描述性标题低风险，不核对。
 		if (b.Kind == kindChapter || b.Kind == kindGroup) && !b.Uncertain {
 			if t := squashSpace(b.Title); t != "" && !strings.Contains(squashSpace(v.unitByID[b.UnitID].Text), t) {
-				return fmt.Errorf("边界 %s 的标题 %q 在该单元原文中找不到：若这里是上一章的延续正文，请不要为它设边界（由前文边界归属，boundaries 可为空）；若源文此处确实没有标题行、标题是你归纳的，请置 uncertain=true",
+				return fmt.Errorf("boundary %s title %q not found in original text: if this is continuation of previous chapter, do not set boundary (it belongs to previous, boundaries can be empty); if source has no title and you synthesized one, set uncertain=true",
 					b.UnitID, snippet(b.Title, 24))
 			}
 		}
@@ -504,7 +504,7 @@ func (v chunkValidator) validate(bs []BoundaryDecision) error {
 		// 是机械冗余，放行后由 resolve 静默去重。
 		if prev, ok := seen[at]; ok {
 			if prev.Kind != b.Kind || boundaryLabel(prev) != boundaryLabel(b) {
-				return fmt.Errorf("边界 %q 与 %q 落在同一位置（%s），语义冲突，请只保留正确的一个",
+				return fmt.Errorf("boundaries %q and %q fall at same position (%s), semantic conflict, keep only the correct one",
 					boundaryLabel(prev), boundaryLabel(b), b.UnitID)
 			}
 		} else {
@@ -520,7 +520,7 @@ func (v chunkValidator) validate(bs []BoundaryDecision) error {
 			head = len(v.normalized) // 首块一个 owned 边界都没报：全部起始文本未归属
 		}
 		if head > 0 && strings.TrimSpace(string(v.normalized[:head])) != "" {
-			return fmt.Errorf("起始 %d 字节文本（%s…）未归属任何边界，请为文本开头补充边界（front_matter/chapter/group）",
+			return fmt.Errorf("starting %d bytes of text (%s...) do not belong to any boundary, add boundary at text start (front_matter/chapter/group)",
 				head, snippet(string(v.normalized[:min(head, 48)]), 24))
 		}
 	}

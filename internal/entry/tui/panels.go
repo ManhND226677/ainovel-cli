@@ -164,7 +164,7 @@ func renderWelcome(width, height int, errMsg string, mode startupMode, importHin
 
 	// 功能亮点
 	features := []struct{ icon, label, desc string }{
-		{">>", "多模型协作", "Architect 规划 / Writer 创作 / Editor 审阅"},
+		{">>", "多模型协作", "Architect 规划 / Writer 创作 / Editor Thẩm định"},
 		{"::", "断点恢复", "崩溃或中断后从上次进度自动续写"},
 		{"<>", "实时干预", "创作过程中随时调整剧情走向"},
 		{"##", "分层长篇", "支持卷-弧-章分层结构的长篇创作"},
@@ -182,7 +182,7 @@ func renderWelcome(width, height int, errMsg string, mode startupMode, importHin
 	feats := strings.Join(featLines, "\n")
 
 	// 输入提示
-	prompt := lipgloss.NewStyle().Foreground(bodyTextColor).Render("在下方输入你的小说需求开始创作")
+	prompt := lipgloss.NewStyle().Foreground(bodyTextColor).Render("在下方输入Bạn的小说需求开始创作")
 
 	modeLine := lipgloss.NewStyle().
 		Foreground(colorMuted).
@@ -231,7 +231,7 @@ func renderWelcome(width, height int, errMsg string, mode startupMode, importHin
 	}
 	b.WriteString("\n\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Italic(true).
-		Render("Tab 切换模式 · 快速开始下 Enter 直接创作 · 共创规划下 Enter 进入对话"))
+		Render("Tab 切换模式 · Bắt đầu nhanh下 Enter 直接创作 · Lên ý tưởng下 Enter 进入对话"))
 
 	if errMsg != "" {
 		b.WriteString("\n\n")

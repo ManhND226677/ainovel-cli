@@ -1,4 +1,4 @@
-package host
+﻿package host
 
 import (
 	"context"
@@ -30,6 +30,7 @@ import (
 	storepkg "github.com/voocel/ainovel-cli/internal/store"
 	"github.com/voocel/ainovel-cli/internal/tools"
 	"github.com/voocel/ainovel-cli/internal/userrules"
+	"github.com/voocel/ainovel-cli/internal/translate"
 )
 
 // Host 是运行时外壳:生命周期/干预入口/事件投影/模型管理。
@@ -351,7 +352,7 @@ func (h *Host) StartPrepared(rawRequirement string) error {
 	}
 	if h.cocreating {
 		h.mu.Unlock()
-		return fmt.Errorf("阶段共创进行中，请先结束共创")
+		return fmt.Errorf("co-creation stage in progress, please finish it first")
 	}
 	h.mu.Unlock()
 
@@ -487,7 +488,7 @@ func (h *Host) Reopen(direction string) error {
 		return fmt.Errorf("创作引擎运行中，无需重开")
 	case h.cocreating:
 		h.mu.Unlock()
-		return fmt.Errorf("阶段共创进行中，请先结束共创")
+		return fmt.Errorf("co-creation stage in progress, please finish it first")
 	case h.exclusive != "":
 		ex := h.exclusive
 		h.mu.Unlock()
@@ -520,7 +521,7 @@ func (h *Host) Resume() (string, error) {
 	}
 	if h.cocreating {
 		h.mu.Unlock()
-		return "", fmt.Errorf("阶段共创进行中，请先结束共创")
+		return "", fmt.Errorf("co-creation stage in progress, please finish it first")
 	}
 	if h.exclusive != "" {
 		ex := h.exclusive
@@ -733,7 +734,7 @@ func (h *Host) Continue(text string) error {
 	h.mu.Lock()
 	if h.cocreating {
 		h.mu.Unlock()
-		return fmt.Errorf("阶段共创进行中，请先结束共创")
+		return fmt.Errorf("co-creation stage in progress, please finish it first")
 	}
 	if h.exclusive != "" {
 		ex := h.exclusive
@@ -751,7 +752,7 @@ func (h *Host) Continue(text string) error {
 		return h.doIntervention(text, true)
 	})
 	if !launched {
-		return fmt.Errorf("Host 正在关闭，不能继续创作")
+		return fmt.Errorf("Host is closing, cannot continue creation")
 	}
 	return err
 }
@@ -788,13 +789,13 @@ func (h *Host) AdvanceOneChapter() error {
 	running, cocreating, ex := h.lifecycle == lifecycleRunning, h.cocreating, h.exclusive
 	h.mu.Unlock()
 	if running || h.engine.isRunning() {
-		return fmt.Errorf("创作仍在运行或正在完成暂停，请稍后再执行 /next")
+		return fmt.Errorf("creation still running or finishing pause, please try /next later")
 	}
 	if cocreating {
-		return fmt.Errorf("阶段共创进行中，请先结束共创")
+		return fmt.Errorf("co-creation stage in progress, please finish it first")
 	}
 	if ex != "" {
-		return fmt.Errorf("%s进行中，请先完成后再执行 /next", ex)
+		return fmt.Errorf("%s in progress, please complete it before executing /next", ex)
 	}
 	meta, err := h.store.RunMeta.Load()
 	if err != nil {
@@ -1380,6 +1381,43 @@ func (h *Host) SwitchModel(role, provider, model string) error {
 }
 
 // concreteThinkingRoles 是可应用推理强度的具体角色（与 agents.ApplyThinking 路由一致）。
+// Config 返回宿主的当前配置。
+func (h *Host) Config() bootstrap.Config {
+	return h.cfg
+}
+
+func (h *Host) Translate() error {
+	h.mu.Lock()
+	if h.lifecycle == lifecycleRunning {
+		h.mu.Unlock()
+		return fmt.Errorf("already running")
+	}
+	if h.cocreating {
+		h.mu.Unlock()
+		return fmt.Errorf("co-creation stage in progress, please finish it first")
+	}
+	if h.exclusive != "" {
+		ex := h.exclusive
+		h.mu.Unlock()
+		return fmt.Errorf("%s进行中，请先完成后再翻译", ex)
+	}
+	h.exclusive = "翻译"
+	ctx, cancel := context.WithCancel(context.Background())
+	h.exclusiveCancel = cancel
+	h.mu.Unlock()
+
+	defer func() {
+		h.mu.Lock()
+		h.exclusive = ""
+		h.exclusiveCancel = nil
+		h.mu.Unlock()
+	}()
+
+	return translate.Run(ctx, h.store, h.models, h.bundle.Prompts.Translator, func(summary string) {
+		h.emitEvent(Event{Time: time.Now(), Category: "SYSTEM", Summary: summary, Level: "info"})
+	})
+}
+
 // 调 default 时按各角色 ResolveReasoningEffort 逐个重新应用。
 var concreteThinkingRoles = []string{"architect", "writer", "editor"}
 

@@ -1,4 +1,4 @@
-package imp
+﻿package imp
 
 import (
 	"bytes"
@@ -33,7 +33,7 @@ func decodeSource(raw []byte) (decoded, error) {
 	if bytes.HasPrefix(raw, utf8BOM) {
 		body := raw[len(utf8BOM):]
 		if !utf8.Valid(body) {
-			return decoded{}, fmt.Errorf("声明 UTF-8 BOM 但内容不是合法 UTF-8")
+			return decoded{}, fmt.Errorf("declared UTF-8 BOM but content is not valid UTF-8")
 		}
 		return decoded{text: string(body), encoding: encodingUTF8BOM}, nil
 	}
@@ -42,13 +42,13 @@ func decodeSource(raw []byte) (decoded, error) {
 	}
 	out, err := simplifiedchinese.GB18030.NewDecoder().Bytes(raw)
 	if err != nil {
-		return decoded{}, fmt.Errorf("既不是合法 UTF-8，GB18030 解码也失败：%w", err)
+		return decoded{}, fmt.Errorf("neither valid UTF-8 nor GB18030 decode successful: %w", err)
 	}
 	if !utf8.Valid(out) {
-		return decoded{}, fmt.Errorf("GB18030 解码结果仍非合法 UTF-8，无法可靠解码")
+		return decoded{}, fmt.Errorf("GB18030 decode result is not valid UTF-8, cannot decode reliably")
 	}
 	if i := bytes.IndexRune(out, utf8.RuneError); i >= 0 {
-		return decoded{}, fmt.Errorf("GB18030 解码出现替换字符（U+FFFD @ 字节 %d），无法可靠解码；请确认文件编码", i)
+		return decoded{}, fmt.Errorf("GB18030 decode contains replacement char (U+FFFD @ byte %d), cannot decode reliably; check file encoding", i)
 	}
 	return decoded{text: string(out), encoding: encodingGB18030}, nil
 }
@@ -67,10 +67,10 @@ func normalize(text string) string {
 func Ingest(bookDir, sourcePath string, in Intent) (*Workspace, *Manifest, error) {
 	raw, err := os.ReadFile(sourcePath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("读取源文件：%w", err)
+		return nil, nil, fmt.Errorf("read source file: %w", err)
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
-		return nil, nil, fmt.Errorf("源文件为空：%s", sourcePath)
+		return nil, nil, fmt.Errorf("source file is empty: %s", sourcePath)
 	}
 	dec, err := decodeSource(raw)
 	if err != nil {
@@ -173,17 +173,17 @@ func buildSourceUnits(normalized []byte, maxUnitBytes int) []SourceUnit {
 func resolveBoundaryByte(unitByID map[string]SourceUnit, unitID, anchor string) (int, error) {
 	u, ok := unitByID[unitID]
 	if !ok {
-		return 0, fmt.Errorf("边界引用不存在的 unit：%s", unitID)
+		return 0, fmt.Errorf("boundary references non-existent unit: %s", unitID)
 	}
 	if anchor == "" {
 		return u.StartByte, nil
 	}
 	switch strings.Count(u.Text, anchor) {
 	case 0:
-		return 0, fmt.Errorf("锚点 %q 不在 unit %s 内", anchor, unitID)
+		return 0, fmt.Errorf("anchor %q not in unit %s", anchor, unitID)
 	case 1:
 		return u.StartByte + strings.Index(u.Text, anchor), nil
 	default:
-		return 0, fmt.Errorf("锚点 %q 在 unit %s 内不唯一", anchor, unitID)
+		return 0, fmt.Errorf("anchor %q not unique in unit %s", anchor, unitID)
 	}
 }

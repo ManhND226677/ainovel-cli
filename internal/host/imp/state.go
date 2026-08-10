@@ -1,4 +1,4 @@
-package imp
+﻿package imp
 
 import (
 	"fmt"
@@ -88,12 +88,12 @@ func LoadState(w *Workspace) (Facts, error) {
 	}
 	src, err := w.LoadSource()
 	if err != nil {
-		return f, fmt.Errorf("读取导入源快照: %w", err)
+		return f, fmt.Errorf("read import source snapshot: %w", err)
 	}
 	f.WorkspaceReady = true
 	guidance, err := w.LoadGuidance()
 	if err != nil {
-		return f, fmt.Errorf("读取切分指导: %w", err)
+		return f, fmt.Errorf("read segmentation guide: %w", err)
 	}
 
 	// segmentation：绑定归一化源 + 用户指导 + 切分 prompt 版本。指导变化（--guide 重识别）自然失效旧切分。
@@ -102,7 +102,7 @@ func LoadState(w *Workspace) (Facts, error) {
 		return f, nil
 	}
 	if err != nil {
-		return f, fmt.Errorf("读取切分工件: %w", err)
+		return f, fmt.Errorf("read segmentation artifact: %w", err)
 	}
 	if segArt.InputDigest != segmentInputDigest(Digest(src), guidance, segmentPromptVersion) {
 		return f, nil
@@ -114,11 +114,11 @@ func LoadState(w *Workspace) (Facts, error) {
 	// confirmation：绑定 segmentation 工件原始字节。
 	segRaw, err := w.readBytes(fileSegmentation)
 	if err != nil {
-		return f, fmt.Errorf("读取切分工件原文: %w", err)
+		return f, fmt.Errorf("read segmentation raw text: %w", err)
 	}
 	confirmed, err := artifactFresh[Confirmation](w, fileConfirmation, Digest(segRaw))
 	if err != nil {
-		return f, fmt.Errorf("读取切分确认: %w", err)
+		return f, fmt.Errorf("read segmentation confirmation: %w", err)
 	}
 	if !confirmed {
 		return f, nil
@@ -144,7 +144,7 @@ func LoadState(w *Workspace) (Facts, error) {
 		return f, nil
 	}
 	if err != nil {
-		return f, fmt.Errorf("读取全书综合工件: %w", err)
+		return f, fmt.Errorf("read full book synthesis artifact: %w", err)
 	}
 	if synArt.InputDigest != synthesisInputDigest(facts) {
 		return f, nil
@@ -155,16 +155,16 @@ func LoadState(w *Workspace) (Facts, error) {
 	// story resolution：uncertain 时绑定 synthesis 工件原始字节，或由 intent 预选。
 	synRaw, err := w.readBytes(fileSynthesis)
 	if err != nil {
-		return f, fmt.Errorf("读取全书综合工件原文: %w", err)
+		return f, fmt.Errorf("read full book synthesis raw text: %w", err)
 	}
 	resolved, err := artifactFresh[StoryResolution](w, fileStoryResolve, Digest(synRaw))
 	if err != nil {
-		return f, fmt.Errorf("读取故事状态裁定: %w", err)
+		return f, fmt.Errorf("read story status judgment: %w", err)
 	}
 	if resolved {
 		f.StoryResolved = true
 	} else if in, iErr := w.LoadIntent(); iErr != nil {
-		return f, fmt.Errorf("读取导入意图: %w", iErr)
+		return f, fmt.Errorf("read import intent: %w", iErr)
 	} else if in.StoryResolution != "" {
 		f.StoryResolved = true
 	}
@@ -240,17 +240,17 @@ func ResumeSummary(st *store.Store) string {
 func checkImportPreconditions(st *store.Store) error {
 	prog, err := st.Progress.Load()
 	if err != nil {
-		return fmt.Errorf("读取进度：%w", err)
+		return fmt.Errorf("read progress: %w", err)
 	}
 	if prog != nil && len(prog.CompletedChapters) > 0 {
-		return fmt.Errorf("已有 %d 个完成章节，拒绝把外部小说并入非空书籍", len(prog.CompletedChapters))
+		return fmt.Errorf("already %d completed chapters, refuse to merge external novel into non-empty book", len(prog.CompletedChapters))
 	}
 	pending, err := st.Signals.LoadPendingCommit()
 	if err != nil {
-		return fmt.Errorf("读取在途提交：%w", err)
+		return fmt.Errorf("read pending commit: %w", err)
 	}
 	if pending != nil {
-		return fmt.Errorf("存在在途章节提交，请先完成或清理后再导入")
+		return fmt.Errorf("pending chapter commit exists, complete or clear before importing")
 	}
 	return nil
 }

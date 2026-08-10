@@ -1,4 +1,4 @@
-package host
+﻿package host
 
 import (
 	"fmt"
@@ -124,7 +124,7 @@ func (s *BudgetSentinel) Refuse() error {
 		return nil
 	}
 	if cost := s.costNow(); cost >= s.limit {
-		return fmt.Errorf("本书已花费 $%.2f，达到预算上限 $%.2f；请上调配置 budget.book_usd 后重试", cost, s.limit)
+		return fmt.Errorf("book has cost $%.2f, reaching budget limit $%.2f; please increase budget.book_usd to continue", cost, s.limit)
 	}
 	return nil
 }

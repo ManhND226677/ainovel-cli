@@ -100,7 +100,7 @@ func renderReportText(report diag.Report, width int, exportPath string, exportEr
 	b.WriteString(dimStyle.Render("开始 "))
 	b.WriteString(formatReportTime(startedAt))
 	if !finishedAt.IsZero() {
-		b.WriteString(dimStyle.Render("  完成 "))
+		b.WriteString(dimStyle.Render("  Hoàn thành "))
 		b.WriteString(formatReportTime(finishedAt))
 	}
 	b.WriteString("\n\n")
@@ -205,7 +205,7 @@ func renderReportLoadingText(width int, startedAt time.Time) string {
 	b.WriteString("\n\n")
 	b.WriteString(bodyStyle.Render(wrapText("正在读取当前小说 output 产物并分析流程、质量、规划和上下文问题。项目较大时可能需要几秒。", width)))
 	b.WriteString("\n\n")
-	b.WriteString(hintStyle.Render("Esc 可先关闭面板，后台分析完成后下次打开会重新生成。"))
+	b.WriteString(hintStyle.Render("Esc 可先关闭面板，后台分析Hoàn thành后下次打开会重新生成。"))
 	return b.String()
 }
 

@@ -1,4 +1,4 @@
-package imp
+﻿package imp
 
 import (
 	"context"
@@ -103,7 +103,7 @@ func analyzedChaptersStrict(w *Workspace, seg *Segmentation, normalized []byte, 
 			break
 		}
 		if err != nil {
-			return n, fmt.Errorf("读取第 %d 章分析工件: %w", c, err)
+			return n, fmt.Errorf("read chapter %d analysis artifact: %w", c, err)
 		}
 		if a.InputDigest != chapterInputDigest(segIdentity, promptVersion, seg, normalized, c-1) {
 			break
@@ -120,7 +120,7 @@ func analyzedChaptersStrict(w *Workspace, seg *Segmentation, normalized []byte, 
 func discardAnalysesAfter(w *Workspace, keep, total int) error {
 	for c := keep + 1; c <= total; c++ {
 		if err := os.Remove(w.path(analysisPath(c))); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("清理陈旧分析工件 %s：%w", analysisPath(c), err)
+			return fmt.Errorf("cleanup stale analysis artifact %s: %w", analysisPath(c), err)
 		}
 	}
 	return nil
@@ -144,7 +144,7 @@ func loadPriorFactsStrict(w *Workspace, count int) ([]ImportedChapterFacts, erro
 	for c := 1; c <= count; c++ {
 		a, err := readArtifact[ChapterAnalysisPayload](w, analysisPath(c))
 		if err != nil {
-			return out, fmt.Errorf("读取第 %d 章分析事实: %w", c, err)
+			return out, fmt.Errorf("read chapter %d analysis facts: %w", c, err)
 		}
 		out = append(out, a.Payload.Facts)
 	}
@@ -248,25 +248,25 @@ func chapterInputDigest(segIdentity, promptVersion string, seg *Segmentation, no
 func validateBatch(r *AnalysisBatchResult, seg *Segmentation, start, end int) error {
 	want := end - start
 	if len(r.Chapters) != want {
-		return fmt.Errorf("批次章节数 %d != 预期 %d", len(r.Chapters), want)
+		return fmt.Errorf("batch chapter count %d != expected %d", len(r.Chapters), want)
 	}
 	for i, f := range r.Chapters {
 		want := seg.Chapters[start+i]
 		if f.Chapter != want.Number {
-			return fmt.Errorf("批次第 %d 项章号 %d != %d", i, f.Chapter, want.Number)
+			return fmt.Errorf("batch item %d chapter number %d != %d", i, f.Chapter, want.Number)
 		}
 		if strings.TrimSpace(f.Summary) == "" || strings.TrimSpace(f.CoreEvent) == "" {
-			return fmt.Errorf("章 %d summary/core_event 不能为空", f.Chapter)
+			return fmt.Errorf("chapter %d summary/core_event cannot be empty", f.Chapter)
 		}
 		if !domain.ValidHookType(strings.ToLower(f.HookType)) {
-			return fmt.Errorf("章 %d hook_type 非法：%q", f.Chapter, f.HookType)
+			return fmt.Errorf("chapter %d invalid hook_type: %q", f.Chapter, f.HookType)
 		}
 		if !domain.ValidDominantStrand(strings.ToLower(f.DominantStrand)) {
-			return fmt.Errorf("章 %d dominant_strand 非法：%q", f.Chapter, f.DominantStrand)
+			return fmt.Errorf("chapter %d invalid dominant_strand: %q", f.Chapter, f.DominantStrand)
 		}
 		for j, fu := range f.ForeshadowUpdates {
 			if fu.Action == "plant" && strings.TrimSpace(fu.Description) == "" {
-				return fmt.Errorf("章 %d foreshadow[%d] plant 需 description", f.Chapter, j)
+				return fmt.Errorf("chapter %d foreshadow[%d] plant requires description", f.Chapter, j)
 			}
 		}
 		// 枚举按小写校验就按小写落盘：commit_chapter 不复验枚举，大小写变体会直通正式状态
@@ -303,7 +303,7 @@ func AnalyzeNext(ctx context.Context, m callModel, systemPrompt string, w *Works
 						digest := chapterInputDigest(segIdentity, promptVersion, seg, normalized, start+i)
 						art := ChapterAnalysisPayload{BatchStart: start + 1, BatchEnd: end, Facts: f}
 						if werr := writeArtifact(w, analysisPath(ch), digest, art); werr != nil {
-							return i, fmt.Errorf("落盘打捞章 %d：%w", ch, werr)
+							return i, fmt.Errorf("save salvaged chapter %d: %w", ch, werr)
 						}
 					}
 					w.writeFailure(FailureMeta{Stage: "analyze", Detail: fmt.Sprintf("批次 %d-%d 长度截断", start+1, end),
@@ -323,7 +323,7 @@ func AnalyzeNext(ctx context.Context, m callModel, systemPrompt string, w *Works
 					prof.step(0, 0, "输出被长度截断且无可打捞前缀，缩小批次为第 %d-%d 章重试", start+1, end)
 					continue
 				}
-				return 0, fmt.Errorf("章 %d 单章批次仍被长度截断，模型可见输出能力不足", start+1)
+				return 0, fmt.Errorf("chapter %d single chapter batch still truncated, model output capability insufficient", start+1)
 			}
 			return 0, err
 		}
@@ -332,7 +332,7 @@ func AnalyzeNext(ctx context.Context, m callModel, systemPrompt string, w *Works
 			digest := chapterInputDigest(segIdentity, promptVersion, seg, normalized, start+i)
 			payloadArt := ChapterAnalysisPayload{BatchStart: start + 1, BatchEnd: end, Facts: f}
 			if err := writeArtifact(w, analysisPath(ch), digest, payloadArt); err != nil {
-				return i, fmt.Errorf("落盘章 %d 分析：%w", ch, err)
+				return i, fmt.Errorf("save chapter %d analysis: %w", ch, err)
 			}
 		}
 		echoChapterFacts(prof, res.Chapters)

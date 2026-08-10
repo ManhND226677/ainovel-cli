@@ -1,4 +1,4 @@
-package host
+﻿package host
 
 import (
 	"errors"
@@ -23,15 +23,15 @@ type bookLease struct {
 func acquireBookLease(dir string) (*bookLease, error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
-		return nil, fmt.Errorf("解析小说目录: %w", err)
+		return nil, fmt.Errorf("resolve novel directory: %w", err)
 	}
 	if err := os.MkdirAll(absDir, 0o755); err != nil {
-		return nil, fmt.Errorf("创建小说目录: %w", err)
+		return nil, fmt.Errorf("create novel directory: %w", err)
 	}
 	fileLock := flock.New(filepath.Join(absDir, bookLockFile), flock.SetPermissions(0o600))
 	locked, err := fileLock.TryLock()
 	if err != nil {
-		return nil, closeBookLockAfterFailure(fileLock, fmt.Errorf("占用小说目录 %q: %w", absDir, err))
+		return nil, closeBookLockAfterFailure(fileLock, fmt.Errorf("lock novel directory %q: %w", absDir, err))
 	}
 	if !locked {
 		return nil, closeBookLockAfterFailure(fileLock, fmt.Errorf(
@@ -45,7 +45,7 @@ func acquireBookLease(dir string) (*bookLease, error) {
 
 func closeBookLockAfterFailure(fileLock *flock.Flock, cause error) error {
 	if err := fileLock.Close(); err != nil {
-		return errors.Join(cause, fmt.Errorf("关闭小说目录锁: %w", err))
+		return errors.Join(cause, fmt.Errorf("unlock novel directory: %w", err))
 	}
 	return cause
 }

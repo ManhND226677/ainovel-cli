@@ -194,6 +194,7 @@ var knownRoles = map[string]bool{
 	"import_segment":    true,
 	"import_analyze":    true,
 	"import_synthesize": true,
+	"translator":        true,
 }
 
 // Config 小说应用配置。
@@ -207,6 +208,9 @@ type Config struct {
 	// ReasoningEffort 顶层默认推理强度（off/low/medium/high/xhigh/max），空=不覆盖（沿用模型/provider 默认）。
 	// 角色未单独配置 reasoning_effort 时回落到此值。
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+
+	// Language 系统与界面的语言（"vi" 或 "zh"）。空值时默认回退到 "vi"。
+	Language string `json:"language,omitempty"`
 
 	// Provider 凭证库
 	Providers map[string]ProviderConfig `json:"providers,omitempty"`
@@ -251,6 +255,13 @@ func (n NotifyConfig) IsEnabled() bool { return n.Enabled == nil || *n.Enabled }
 
 // ValidateBase 校验基础配置。
 func (c *Config) ValidateBase() error {
+	if c.Language == "" {
+		c.Language = "vi"
+	}
+	if c.Language != "vi" && c.Language != "zh" {
+		return fmt.Errorf("unsupported language %q (must be \"vi\" or \"zh\"): %w", c.Language, errs.ErrConfig)
+	}
+
 	if err := validateConfigText("provider", c.Provider); err != nil {
 		return err
 	}
@@ -411,6 +422,9 @@ func (c *Config) DefaultProviderConfig() ProviderConfig {
 
 // FillDefaults 填充默认值。
 func (c *Config) FillDefaults() {
+	if c.Language == "" {
+		c.Language = "vi"
+	}
 	if c.OutputDir == "" {
 		c.OutputDir = filepath.Join("output", "novel")
 	}

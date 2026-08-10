@@ -85,7 +85,19 @@ func (s *DraftStore) SaveFinalChapter(chapter int, content string) error {
 	return s.io.WriteMarkdown(fmt.Sprintf("chapters/%02d.md", chapter), content)
 }
 
-// LoadChapterText 读取已提交的终稿原文。
+// LoadChapterTextVI 读取已提交的终稿越南文原文。
+func (s *DraftStore) LoadChapterTextVI(chapter int) (string, error) {
+	path := fmt.Sprintf("vi/chapters/%02d.md", chapter)
+	data, err := s.io.ReadFile(path)
+	if os.IsNotExist(err) {
+		return "", err
+	}
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 func (s *DraftStore) LoadChapterText(chapter int) (string, error) {
 	data, err := s.io.ReadFile(fmt.Sprintf("chapters/%02d.md", chapter))
 	if os.IsNotExist(err) {

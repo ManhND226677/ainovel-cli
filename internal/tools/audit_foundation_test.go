@@ -133,7 +133,7 @@ func TestAuditFoundationRejectsStaleFingerprint(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"fingerprint": fingerprint, "ready": true, "summary": "通过", "issues": []any{},
 	})
-	if _, err := NewAuditFoundationTool(s).Execute(context.Background(), args); err == nil || !strings.Contains(err.Error(), "重新调用 novel_context") {
+	if _, err := NewAuditFoundationTool(s).Execute(context.Background(), args); err == nil || !strings.Contains(err.Error(), "foundation changed; call novel_context to get latest fingerprint before auditing") {
 		t.Fatalf("expected stale fingerprint rejection, got %v", err)
 	}
 }

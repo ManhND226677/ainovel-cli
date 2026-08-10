@@ -1,4 +1,4 @@
-package tools
+﻿package tools
 
 import (
 	"fmt"
@@ -94,10 +94,10 @@ func (s *StyleStatsIndex) ChapterCommitted(chapter int, text string) {
 func (s *StyleStatsIndex) loadChapter(chapter int) (string, error) {
 	text, err := s.store.Drafts.LoadChapterText(chapter)
 	if err != nil {
-		return "", fmt.Errorf("读取第 %d 章终稿: %w", chapter, err)
+		return "", fmt.Errorf("read chapter %d final draft: %w", chapter, err)
 	}
 	if text == "" {
-		return "", fmt.Errorf("第 %d 章已标记完成但终稿不存在", chapter)
+		return "", fmt.Errorf("chapter %d marked completed but final draft does not exist", chapter)
 	}
 	return text, nil
 }
@@ -108,10 +108,10 @@ func normalizeCompletedChapters(chapters []int) ([]int, map[int]struct{}, error)
 	set := make(map[int]struct{}, len(normalized))
 	for _, chapter := range normalized {
 		if chapter <= 0 {
-			return nil, nil, fmt.Errorf("已完成章节号必须大于 0，实际为 %d", chapter)
+			return nil, nil, fmt.Errorf("completed chapter number must be > 0, got %d", chapter)
 		}
 		if _, exists := set[chapter]; exists {
-			return nil, nil, fmt.Errorf("已完成章节重复：第 %d 章", chapter)
+			return nil, nil, fmt.Errorf("duplicate completed chapter: chapter %d", chapter)
 		}
 		set[chapter] = struct{}{}
 	}

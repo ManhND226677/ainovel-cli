@@ -165,7 +165,7 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "import",
 			Group:       "writing",
 			Usage:       "/import <path> [--yes] [--story=open|closed] [--continue] [--guide=<切分指导>]",
-			Description: "语义导入外部小说（无参数则恢复未完成导入；--guide 用自然语言调整切分）",
+			Description: "语义导入外部小说（无参数则恢复未Hoàn thành导入；--guide 用自然语言调整切分）",
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				m.importSeq++
@@ -205,7 +205,7 @@ func commandRegistryInstance() commandRegistry {
 			Aliases:     []string{"plan"},
 			Group:       "writing",
 			Usage:       "/cocreate",
-			Description: "暂停创作，共创规划后续阶段走向",
+			Description: "Tạm dừng创作，Lên ý tưởng后续阶段走向",
 			AutoExecute: true,
 			Run: func(m Model, _ []string) (tea.Model, tea.Cmd) {
 				if m.mode != modeRunning {
@@ -217,7 +217,7 @@ func commandRegistryInstance() commandRegistry {
 				}
 				if !m.runtime.PauseForCoCreate() {
 					m.applyEvent(host.Event{
-						Time: time.Now(), Category: "ERROR", Summary: "无法进入阶段共创：全书已完成或已在共创中", Level: "error",
+						Time: time.Now(), Category: "ERROR", Summary: "无法进入阶段共创：全书已Hoàn thành或已在共创中", Level: "error",
 					})
 					m.refreshEventViewport()
 					return m, nil
@@ -274,7 +274,7 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "export",
 			Group:       "writing",
 			Usage:       "/export [path] [from=N] [to=M] [--overwrite]",
-			Description: "导出已完成章节为 TXT/EPUB",
+			Description: "导出已Hoàn thành章节为 TXT/EPUB",
 			AutoExecute: true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				cmd, err := startExport(m.runtime, args)
@@ -292,8 +292,35 @@ func commandRegistryInstance() commandRegistry {
 				return m, cmd
 			},
 		},
+		{
+			Name:        "translate",
+			Group:       "writing",
+			Usage:       "/translate",
+			Description: "Dịch các chương hoàn thành sang tiếng Việt",
+			AutoExecute: true,
+			NeedsIdle:   true,
+			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
+				if len(args) != 0 {
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Sai cú pháp, sử dụng: /translate", Level: "error"})
+					m.refreshEventViewport()
+					return m, nil
+				}
+				cmd := func() tea.Msg {
+					err := m.runtime.Translate()
+					if err != nil {
+						return translateDoneMsg{err: err}
+					}
+					return translateDoneMsg{}
+				}
+				m.applyEvent(host.Event{Time: time.Now(), Category: "SYSTEM", Summary: "Đang dịch thuật...", Level: "info"})
+				m.refreshEventViewport()
+				return m, cmd
+			},
+		},
 	})
 }
+
+type translateDoneMsg struct{ err error }
 
 func commandSpecs() []slashCommandSpec {
 	return commandRegistryInstance().Visible()

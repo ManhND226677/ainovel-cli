@@ -38,6 +38,9 @@ type Options struct {
 
 	// Overwrite 文件存在时是否覆盖；默认拒绝。
 	Overwrite bool
+
+	// Lang 语言，例如 "vi" 或 "zh"
+	Lang string
 }
 
 // Deps 是 Run 所需依赖。仅 store；导出无需 LLM、prompt、bundle。

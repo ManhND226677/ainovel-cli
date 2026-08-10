@@ -28,6 +28,7 @@ var voiceFS embed.FS
 type Prompts struct {
 	ArchitectShort   string
 	ArchitectLong    string
+	Translator       string
 	Writer           string // 协议模板,含 {{VOICE}} 占位符;终稿经 BuildWriterPrompt 组装
 	Editor           string
 	ImportSegment    string // 语义切分：识别章节/卷/附属文本边界
@@ -176,6 +177,7 @@ func loadPrompts() Prompts {
 	return Prompts{
 		ArchitectShort:   WithSimulationGuidance(mustRead(promptsFS, "prompts/architect-short.md"), "architect"),
 		ArchitectLong:    WithSimulationGuidance(mustRead(promptsFS, "prompts/architect-long.md"), "architect"),
+		Translator:       mustRead(promptsFS, "prompts/translator.md"),
 		Writer:           WithSimulationGuidance(mustRead(promptsFS, "prompts/writer.md"), "writer"),
 		Editor:           WithSimulationGuidance(mustRead(promptsFS, "prompts/editor.md"), "editor"),
 		ImportSegment:    mustRead(promptsFS, "prompts/import-segment.md"),

@@ -81,7 +81,17 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 
 	bodies := make(map[int]string, len(chapters))
 	for _, ch := range chapters {
-		text, err := deps.Store.Drafts.LoadChapterText(ch)
+		var text string
+		var err error
+		if opts.Lang == "vi" {
+			text, err = deps.Store.Drafts.LoadChapterTextVI(ch)
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("Vui lòng chạy lệnh /translate trước khi xuất bản tiếng Việt (chưa có bản dịch cho chương %d)", ch)
+			}
+		} else {
+			text, err = deps.Store.Drafts.LoadChapterText(ch)
+		}
+		
 		if err != nil {
 			return nil, fmt.Errorf("读取第 %d 章失败：%w", ch, err)
 		}
@@ -108,9 +118,9 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 
 	if !opts.Overwrite {
 		if _, err := os.Stat(outPath); err == nil {
-			return nil, fmt.Errorf("文件已存在：%s（添加 --overwrite 覆盖）", outPath)
+			return nil, fmt.Errorf("file already exists: %s (add --overwrite to overwrite)", outPath)
 		} else if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("检查输出路径失败：%w", err)
+			return nil, fmt.Errorf("check output path failed: %w", err)
 		}
 	}
 
@@ -118,7 +128,7 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	for _, ch := range chapters {
 		summary, err := deps.Store.Summaries.LoadSummary(ch)
 		if err != nil {
-			return nil, fmt.Errorf("读取第 %d 章摘要失败：%w", ch, err)
+			return nil, fmt.Errorf("read chapter %d summary failed: %w", ch, err)
 		}
 		if summary != nil && strings.TrimSpace(summary.Title) != "" {
 			titleIdx[ch] = summary.Title
@@ -132,17 +142,17 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	var data []byte
 	switch opts.Format {
 	case FormatTXT:
-		data = []byte(renderTXT(progress.NovelName, chapters, titleIdx, locations, bodies))
+		data = []byte(renderTXT(progress.NovelName, chapters, titleIdx, locations, bodies, opts.Lang))
 	case FormatEPUB:
-		buf, err := renderEPUB(progress.NovelName, chapters, titleIdx, locations, bodies)
+		buf, err := renderEPUB(progress.NovelName, chapters, titleIdx, locations, bodies, opts.Lang)
 		if err != nil {
-			return nil, fmt.Errorf("渲染 EPUB 失败：%w", err)
+			return nil, fmt.Errorf("render EPUB failed: %w", err)
 		}
 		data = buf
 	}
 
 	if err := atomicWrite(outPath, data); err != nil {
-		return nil, fmt.Errorf("写入失败：%w", err)
+		return nil, fmt.Errorf("write failed: %w", err)
 	}
 
 	return &Result{

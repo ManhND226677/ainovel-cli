@@ -28,13 +28,16 @@ func startExport(rt *host.Host, args []string) (tea.Cmd, error) {
 	if err != nil {
 		return nil, err
 	}
+	if opts.Lang == "" {
+		opts.Lang = rt.Config().Language
+	}
 	return func() tea.Msg {
 		res, err := rt.Export(context.Background(), opts)
 		return exportDoneMsg{result: res, err: err}
 	}, nil
 }
 
-// parseExportArgs 解析 `/export [path] [from=N] [to=M] [--overwrite]`。
+// parseExportArgs 解析 `/export [path] [from=N] [to=M] [--overwrite] [--lang=vi|zh]`。
 //
 // 位置参数：最多一个，作为输出路径；缺省由 exp.Run 决定（{novelDir}/{NovelName}.txt）。
 func parseExportArgs(args []string) (exp.Options, error) {
@@ -42,6 +45,13 @@ func parseExportArgs(args []string) (exp.Options, error) {
 	for _, a := range args {
 		if a == "--overwrite" {
 			opts.Overwrite = true
+			continue
+		}
+		if strings.HasPrefix(a, "--lang=") {
+			opts.Lang = strings.TrimPrefix(a, "--lang=")
+			if opts.Lang != "vi" && opts.Lang != "zh" {
+				return exp.Options{}, fmt.Errorf("不支持的语言：%q (支持: vi, zh)", opts.Lang)
+			}
 			continue
 		}
 		if k, v, ok := strings.Cut(a, "="); ok {
@@ -79,7 +89,7 @@ func formatExportSuccess(res *exp.Result) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "✓ 已导出 %d 章 / %s 到 %s", res.Chapters, humanBytes(res.Bytes), res.Path)
 	if n := len(res.Skipped); n > 0 {
-		fmt.Fprintf(&b, "（跳过 %d 章未完成：%s）", n, briefIntList(res.Skipped, 5))
+		fmt.Fprintf(&b, "（跳过 %d 章未Hoàn thành：%s）", n, briefIntList(res.Skipped, 5))
 	}
 	return b.String()
 }

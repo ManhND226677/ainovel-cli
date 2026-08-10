@@ -228,7 +228,7 @@ func renderDetailContent(snap host.UISnapshot, contentW int) string {
 	}
 
 	if snap.LastReviewSummary != "" {
-		b.WriteString(cardTitleStyle.Render("~ 最近审阅 ~"))
+		b.WriteString(cardTitleStyle.Render("~ 最近Thẩm định ~"))
 		b.WriteString("\n")
 		writeWrapped(&b, snap.LastReviewSummary, contentW, cardContentStyle)
 		b.WriteString("\n")

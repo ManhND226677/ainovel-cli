@@ -9,11 +9,11 @@ import (
 func PrepareQuick(req Request) (Plan, error) {
 	prompt := strings.TrimSpace(req.UserPrompt)
 	if prompt == "" {
-		return Plan{}, fmt.Errorf("prompt is required")
+		return Plan{}, fmt.Errorf("yêu cầu không được để trống")
 	}
 	return Plan{
 		Mode:        ModeQuick,
-		DisplayName: "快速开始",
+		DisplayName: "Bắt đầu nhanh",
 		RawPrompt:   prompt,
 	}, nil
 }

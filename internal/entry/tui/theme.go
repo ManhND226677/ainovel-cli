@@ -58,14 +58,14 @@ var statusDisplay = map[string]struct {
 	icon  string
 	label string
 }{
-	"READY":    {"○", "就绪"},
-	"RUNNING":  {"", "运行中"},
-	"REVIEW":   {"◆", "审阅"},
-	"REWRITE":  {"◆", "返工"},
-	"COMPLETE": {"●", "完成"},
-	"PAUSED":   {"⏸", "暂停"},
-	"PAUSING":  {"⏸", "暂停中"},
-	"ERROR":    {"✕", "错误"},
+	"READY":    {"○", "Sẵn sàng"},
+	"RUNNING":  {"", "Đang chạy"},
+	"REVIEW":   {"◆", "Thẩm định"},
+	"REWRITE":  {"◆", "Viết lại"},
+	"COMPLETE": {"●", "Hoàn thành"},
+	"PAUSED":   {"⏸", "Tạm dừng"},
+	"PAUSING":  {"⏸", "Tạm dừng中"},
+	"ERROR":    {"✕", "Lỗi"},
 }
 
 // 事件分类颜色映射

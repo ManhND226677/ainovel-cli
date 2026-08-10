@@ -484,11 +484,11 @@ func (m *Model) inputHints() string {
 	}
 	switch m.snapshot.RuntimeState {
 	case "pausing":
-		return dimStyle.Render("正在暂停创作 · 请等待当前轮次结束" + suffix)
+		return dimStyle.Render("正在Tạm dừng创作 · 请等待当前轮次结束" + suffix)
 	case "paused":
 		return dimStyle.Render("输入 / 搜索命令 · Enter 继续创作 · Esc 清空输入" + suffix)
 	}
-	return dimStyle.Render("输入 / 搜索命令 · 点击/Tab 切换面板 · ↑↓ 滚动 · End 跳底 · Ctrl+L 清屏 · Esc 暂停 · Enter 发送" + suffix)
+	return dimStyle.Render("输入 / 搜索命令 · 点击/Tab 切换面板 · ↑↓ 滚动 · End 跳底 · Ctrl+L 清屏 · Esc Tạm dừng · Enter 发送" + suffix)
 }
 
 func (m *Model) inputLimitHint() string {
@@ -561,19 +561,19 @@ func (m *Model) syncRuntimePlaceholder() {
 	case "completed":
 		m.textarea.Placeholder = donePlaceholder
 	case "pausing":
-		m.textarea.Placeholder = "正在暂停创作..."
+		m.textarea.Placeholder = "正在Tạm dừng创作..."
 	case "paused":
 		if m.snapshot.AdvanceMode == "review" && m.snapshot.Phase == "writing" {
 			m.textarea.Placeholder = "逐章验收等待中：输入修改意见，或 /next 放行下一章"
 		} else {
-			m.textarea.Placeholder = "创作已暂停，输入任意内容继续创作"
+			m.textarea.Placeholder = "创作已Tạm dừng，输入任意内容继续创作"
 		}
 	default:
 		if !m.snapshot.IsRunning {
 			if m.snapshot.AdvanceMode == "review" && m.snapshot.Phase == "writing" {
 				m.textarea.Placeholder = "逐章验收等待中：输入修改意见，或 /next 放行下一章"
 			} else {
-				m.textarea.Placeholder = "运行中断，输入任意内容恢复创作"
+				m.textarea.Placeholder = "Đang chạy断，输入任意内容恢复创作"
 			}
 		} else {
 			m.textarea.Placeholder = defaultSteerPlaceholder()

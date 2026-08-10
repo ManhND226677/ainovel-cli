@@ -39,13 +39,13 @@ func Run(cfg bootstrap.Config, bundle assets.Bundle, opts Options) error {
 	}
 	defer eng.Close()
 	if logErr := eng.FileLogError(); logErr != nil {
-		fmt.Fprintf(stderr, "警告：文件日志不可用，继续使用终端日志：%v\n", logErr)
+		fmt.Fprintf(stderr, "Cảnh báo: Không khả dụng file log, tiếp tục sử dụng log thiết bị đầu cuối: %v\n", logErr)
 	}
 	// 运行结束 / 出错返回时落一份脱敏诊断，方便 headless 用户贴 issue。
 	// （外部 kill 的挂死不走 defer，仍需在 TUI 里手动 /diag。）
 	defer func() {
 		if _, err := diag.Export(store.NewStore(eng.Dir())); err != nil {
-			fmt.Fprintf(stderr, "警告：诊断报告导出失败：%v\n", err)
+			fmt.Fprintf(stderr, "Cảnh báo: Xuất báo cáo chẩn đoán thất bại: %v\n", err)
 		}
 	}()
 
@@ -60,7 +60,7 @@ func Run(cfg bootstrap.Config, bundle assets.Bundle, opts Options) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(stderr, "headless 启动: %s\n", eng.Dir())
+		fmt.Fprintf(stderr, "Headless khởi động: %s\n", eng.Dir())
 		// 启动侧确定性生成本书用户规则快照（用原始 prompt 归一化），须在 StartPrepared 前。
 		if err := eng.PrepareUserRules(plan.RawPrompt); err != nil {
 			return err
@@ -82,9 +82,9 @@ func Run(cfg bootstrap.Config, bundle assets.Bundle, opts Options) error {
 			return err
 		}
 		if label == "" {
-			return fmt.Errorf("headless 模式需要 --prompt，或输出目录 %q 下已有可恢复会话", eng.Dir())
+			return fmt.Errorf("chế độ headless yêu cầu --prompt, hoặc thư mục xuất khẩu %q đã có phiên bản có thể khôi phục", eng.Dir())
 		}
-		fmt.Fprintf(stderr, "headless 恢复: %s (%s)\n", eng.Dir(), label)
+		fmt.Fprintf(stderr, "Headless khôi phục: %s (%s)\n", eng.Dir(), label)
 		return consume(eng, stdout, stderr, roundHasContent)
 	}
 

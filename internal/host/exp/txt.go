@@ -99,13 +99,19 @@ func renderTXT(
 	titleIdx chapterTitleIndex,
 	locations map[int]chapterLocation,
 	bodies map[int]string,
+	lang string,
 ) string {
 	var b strings.Builder
 
 	if name := strings.TrimSpace(novelName); name != "" {
-		b.WriteString("《")
-		b.WriteString(name)
-		b.WriteString("》\n\n")
+		if lang == "vi" {
+			b.WriteString(name)
+		} else {
+			b.WriteString("《")
+			b.WriteString(name)
+			b.WriteString("》")
+		}
+		b.WriteString("\n\n")
 	}
 
 	useLayered := len(locations) > 0
@@ -114,16 +120,28 @@ func renderTXT(
 		if useLayered {
 			if loc, ok := locations[ch]; ok && loc.IsFirstOfVolume {
 				b.WriteString("\n═══════════════════════════════════════════\n")
-				fmt.Fprintf(&b, "           第 %d 卷  %s\n", loc.VolumeIdx, strings.TrimSpace(loc.VolumeTitle))
+				if lang == "vi" {
+					fmt.Fprintf(&b, "           Tập %d  %s\n", loc.VolumeIdx, strings.TrimSpace(loc.VolumeTitle))
+				} else {
+					fmt.Fprintf(&b, "           第 %d 卷  %s\n", loc.VolumeIdx, strings.TrimSpace(loc.VolumeTitle))
+				}
 				b.WriteString("═══════════════════════════════════════════\n\n")
 			}
 		}
 
 		title := strings.TrimSpace(titleIdx[ch])
 		if title != "" {
-			fmt.Fprintf(&b, "第 %d 章  %s\n\n", ch, title)
+			if lang == "vi" {
+				fmt.Fprintf(&b, "Chương %d  %s\n\n", ch, title)
+			} else {
+				fmt.Fprintf(&b, "第 %d 章  %s\n\n", ch, title)
+			}
 		} else {
-			fmt.Fprintf(&b, "第 %d 章\n\n", ch)
+			if lang == "vi" {
+				fmt.Fprintf(&b, "Chương %d\n\n", ch)
+			} else {
+				fmt.Fprintf(&b, "第 %d 章\n\n", ch)
+			}
 		}
 
 		body := stripChapterTitleHeader(strings.TrimSpace(bodies[ch]), title)

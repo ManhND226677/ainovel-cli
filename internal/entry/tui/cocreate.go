@@ -20,9 +20,9 @@ const (
 func (m startupMode) label() string {
 	switch m {
 	case startupModeCoCreate:
-		return "共创规划"
+		return "Lên ý tưởng"
 	default:
-		return "快速开始"
+		return "Bắt đầu nhanh"
 	}
 }
 
@@ -38,7 +38,7 @@ func (m startupMode) subtitle() string {
 func placeholderForNewMode(mode startupMode) string {
 	switch mode {
 	case startupModeCoCreate:
-		return "先输入你的核心想法，Enter 开始与 AI 共创"
+		return "先输入Bạn的核心想法，Enter 开始与 AI 共创"
 	default:
 		return "输入一句小说需求，Enter 直接开始创作"
 	}
@@ -50,14 +50,14 @@ func placeholderForCoCreate(state *cocreateState) string {
 	}
 	switch {
 	case state.awaiting:
-		return "AI 正在整理你的要求..."
+		return "AI 正在整理Bạn的要求..."
 	case state.canStart():
 		if state.stage {
 			return "继续补充，或按 Ctrl+S 应用方向并继续创作"
 		}
 		return "继续补充，或按 Ctrl+S 开始创作"
 	default:
-		return "继续补充你的要求，Enter 发送给 AI"
+		return "继续补充Bạn的要求，Enter 发送给 AI"
 	}
 }
 
@@ -103,12 +103,12 @@ func newCoCreateState(initial string) *cocreateState {
 
 // stageCoCreateOpener 是阶段共创的合成开场用户语，作为 kickoff 的 user 轮次发给 LLM，
 // 让助手据"当前故事状态"主动开局，而不是空对话干等用户先说话。
-const stageCoCreateOpener = "我先暂停一下，想和你一起规划接下来的走向。"
+const stageCoCreateOpener = "我先Tạm dừng一下，想和Bạn一起规划接下来的走向。"
 
 // stageCoCreateSystemLine 是这条开场在 UI 里的中性呈现：开场句本质是系统合成的、
 // 用户并未真打过，故不伪装成"你"的发言，改以系统行交代上下文（它仍以 stageCoCreateOpener
 // 发给 LLM，见 renderCoCreateConversationPanel 的 i==0 特判）。
-const stageCoCreateSystemLine = "已暂停创作，进入阶段共创 —— AI 会结合当前故事进度，和你一起规划接下来的走向。"
+const stageCoCreateSystemLine = "已Tạm dừng创作，进入阶段共创 —— AI 会结合当前故事进度，和Bạn一起规划接下来的走向。"
 
 // newStageCoCreateState 创建阶段共创状态：seed 开场并标记 stage，使 runCoCreate 走
 // StageCoCreateStream、Ctrl+S 走 ResumeFromCoCreate。
@@ -193,8 +193,8 @@ func (s *cocreateState) buildPlan() (startup.Plan, error) {
 }
 
 func renderStartupModeBar(width int, mode startupMode) string {
-	quick := renderStartupModePill(mode == startupModeQuick, "快速开始")
-	cocreate := renderStartupModePill(mode == startupModeCoCreate, "共创规划")
+	quick := renderStartupModePill(mode == startupModeQuick, "Bắt đầu nhanh")
+	cocreate := renderStartupModePill(mode == startupModeCoCreate, "Lên ý tưởng")
 	title := lipgloss.NewStyle().
 		Foreground(colorAccent).
 		Bold(true).
@@ -388,7 +388,7 @@ func renderCoCreateModal(width, height int, state *cocreateState, errMsg, inputV
 		contentH = 10
 	}
 
-	titleText, subtitleText := "共创规划", "先把需求聊清楚，再开始创作"
+	titleText, subtitleText := "Lên ý tưởng", "先把需求聊清楚，再开始创作"
 	if state.stage {
 		titleText, subtitleText = "阶段共创", "规划后续走向，再继续创作"
 	}
@@ -448,12 +448,12 @@ func renderCoCreateConversationPanel(width, height int, state *cocreateState, er
 	}
 	wrapW := max(12, contentW-4)
 
-	userRole := lipgloss.NewStyle().Foreground(colorAccent2).Bold(true).Render("你")
+	userRole := lipgloss.NewStyle().Foreground(colorAccent2).Bold(true).Render("Bạn")
 	aiRole := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render("AI")
 	userBody := lipgloss.NewStyle().Foreground(colorAccent2)
 	aiBody := lipgloss.NewStyle().Foreground(bodyTextColor)
 	thinkingStyle := lipgloss.NewStyle().Foreground(colorDim).Italic(true)
-	thinkingTag := lipgloss.NewStyle().Foreground(colorDim).Bold(true).Render("AI 思考")
+	thinkingTag := lipgloss.NewStyle().Foreground(colorDim).Bold(true).Render("AI Đang nghĩ")
 
 	sysStyle := lipgloss.NewStyle().Foreground(colorDim).Italic(true)
 

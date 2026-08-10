@@ -103,7 +103,7 @@ func (s *simulationState) refresh(contentW int) {
 	b.WriteString(dimStyle.Render("开始 "))
 	b.WriteString(formatReportTime(s.startedAt))
 	if !s.finishedAt.IsZero() {
-		b.WriteString(dimStyle.Render("  完成 "))
+		b.WriteString(dimStyle.Render("  Hoàn thành "))
 		b.WriteString(formatReportTime(s.finishedAt))
 	}
 	b.WriteString("\n\n")
@@ -145,7 +145,7 @@ func (s *simulationState) refresh(contentW int) {
 		b.WriteString("\n")
 		b.WriteString(dimStyle.Render("Esc 关闭面板"))
 	default:
-		b.WriteString(okStyle.Render("仿写画像已就绪，后续 Agent 会从 novel_context 读取"))
+		b.WriteString(okStyle.Render("仿写画像已Sẵn sàng，后续 Agent 会从 novel_context 读取"))
 		b.WriteString("\n")
 		b.WriteString(dimStyle.Render("Esc 关闭面板"))
 	}

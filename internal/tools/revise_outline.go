@@ -1,4 +1,4 @@
-package tools
+﻿package tools
 
 import (
 	"context"
@@ -60,7 +60,7 @@ func (t *ReviseOutlineTool) Execute(_ context.Context, args json.RawMessage) (js
 		return nil, fmt.Errorf("from_chapter must be > 0: %w", errs.ErrToolArgs)
 	}
 	if strings.TrimSpace(input.Reason) == "" {
-		return nil, fmt.Errorf("reason 不能为空: %w", errs.ErrToolArgs)
+		return nil, fmt.Errorf("reason is required: %w", errs.ErrToolArgs)
 	}
 
 	total, err := t.store.ReviseOutline(input.FromChapter, input.Replacement)

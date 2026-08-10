@@ -1,4 +1,4 @@
-package tools
+﻿package tools
 
 import (
 	"context"
@@ -81,10 +81,10 @@ func (t *EditChapterTool) Execute(ctx context.Context, args json.RawMessage) (js
 		return nil, fmt.Errorf("chapter must be > 0: %w", errs.ErrToolArgs)
 	}
 	if a.OldString == "" {
-		return nil, fmt.Errorf("old_string 不能为空: %w", errs.ErrToolArgs)
+		return nil, fmt.Errorf("old_string is required: %w", errs.ErrToolArgs)
 	}
 	if a.OldString == a.NewString {
-		return nil, fmt.Errorf("old_string 与 new_string 相同，无需修改: %w", errs.ErrToolArgs)
+		return nil, fmt.Errorf("old_string and new_string are identical, nothing to modify: %w", errs.ErrToolArgs)
 	}
 	if err := t.store.Progress.ValidateChapterWork(a.Chapter); err != nil {
 		return nil, err
@@ -97,14 +97,14 @@ func (t *EditChapterTool) Execute(ctx context.Context, args json.RawMessage) (js
 		return nil, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
 	}
 	if !completed {
-		return nil, fmt.Errorf("第 %d 章尚未完成，初稿禁止使用 edit_chapter；有硬伤请调用 draft_chapter(mode=\"write\", chapter=%d) 整章覆盖: %w", a.Chapter, a.Chapter, errs.ErrToolPrecondition)
+		return nil, fmt.Errorf("chapter %d not completed, edit_chapter forbidden for rough draft; use draft_chapter(mode=\"write\", chapter=%d) to rewrite entire chapter if flawed: %w", a.Chapter, a.Chapter, errs.ErrToolPrecondition)
 	}
 	progress, err := t.store.Progress.Load()
 	if err != nil {
 		return nil, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
 	}
 	if progress == nil || !slices.Contains(progress.PendingRewrites, a.Chapter) {
-		return nil, fmt.Errorf("第 %d 章已完成且不在 PendingRewrites 队列中，不能编辑；需修改请先由 editor 评审触发重写/打磨: %w", a.Chapter, errs.ErrToolPrecondition)
+		return nil, fmt.Errorf("chapter %d completed and not in PendingRewrites, cannot edit; trigger rewrite/polish via editor review first if modification needed: %w", a.Chapter, errs.ErrToolPrecondition)
 	}
 	if err := EnsureChapterExpanded(t.store, a.Chapter); err != nil {
 		return nil, err
@@ -164,7 +164,7 @@ func (t *EditChapterTool) ensureDraft(chapter int) error {
 		return fmt.Errorf("load chapter: %w: %w", errs.ErrStoreRead, err)
 	}
 	if text == "" {
-		return fmt.Errorf("第 %d 章无草稿也无终稿，请先调 draft_chapter(mode=write, chapter=%d) 创建初稿: %w", chapter, chapter, errs.ErrToolPrecondition)
+		return fmt.Errorf("neither draft nor final text found for chapter %d, please call draft_chapter(mode=write, chapter=%d) first: %w", chapter, chapter, errs.ErrToolPrecondition)
 	}
 	if err := t.store.Drafts.SaveDraft(chapter, text); err != nil {
 		return fmt.Errorf("seed draft from chapter: %w: %w", errs.ErrStoreWrite, err)

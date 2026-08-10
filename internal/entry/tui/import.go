@@ -116,7 +116,7 @@ func (s *importState) refresh(contentW int) {
 	b.WriteString(dimStyle.Render("开始 "))
 	b.WriteString(formatReportTime(s.startedAt))
 	if !s.finishedAt.IsZero() {
-		b.WriteString(dimStyle.Render("  完成 "))
+		b.WriteString(dimStyle.Render("  Hoàn thành "))
 		b.WriteString(formatReportTime(s.finishedAt))
 	}
 	b.WriteString("\n\n")
@@ -176,18 +176,18 @@ func (s *importState) refresh(contentW int) {
 		b.WriteString("\n")
 		b.WriteString(dimStyle.Render("Esc 关闭面板"))
 	case s.paused && s.stage == imp.StageAwaitingConfirmation:
-		b.WriteString(okStyle.Render("切分完成，等待你核对"))
+		b.WriteString(okStyle.Render("切分Hoàn thành，等待Bạn核对"))
 		b.WriteString("\n")
 		b.WriteString(dimStyle.Render("y 确认切分并继续；需调整切分可 Esc 后用 /import --guide=<自然语言说明>；Esc 关闭面板"))
 	case s.paused:
 		// 管线在等待裁定处停下，通道已关闭：按面板内提示操作后 Esc 关闭。
-		b.WriteString(okStyle.Render("导入已暂停，等待你的操作"))
+		b.WriteString(okStyle.Render("导入已Tạm dừng，等待Bạn的操作"))
 		b.WriteString("\n")
 		b.WriteString(dimStyle.Render("按上方提示继续（如 /import --story=open|closed）；Esc 关闭面板"))
 	case s.done:
-		b.WriteString(okStyle.Render("导入完成，Foundation 与章节已就绪"))
+		b.WriteString(okStyle.Render("导入Hoàn thành，Foundation 与章节已Sẵn sàng"))
 		b.WriteString("\n")
-		b.WriteString(dimStyle.Render("Esc 关闭面板并接通续写门禁（引擎停在下一章边界，等你验收放行）"))
+		b.WriteString(dimStyle.Render("Esc 关闭面板并接通续写门禁（引擎停在下一章边界，等Bạn验收放行）"))
 	default:
 		b.WriteString(dimStyle.Render("Esc 取消导入"))
 	}

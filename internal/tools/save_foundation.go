@@ -1,4 +1,4 @@
-package tools
+﻿package tools
 
 import (
 	"context"
@@ -100,7 +100,7 @@ func (t *SaveFoundationTool) Execute(_ context.Context, args json.RawMessage) (j
 	// 续卷失当只能翻会话日志排障。事实快照取判定时刻（变更落盘前）的进度。
 	volumeEnd := a.Type == "append_volume" || a.Type == "complete_book"
 	if volumeEnd && strings.TrimSpace(a.Reason) == "" {
-		return nil, fmt.Errorf("%s 必须带 reason 参数：对照完结判定清单，一句话说明本次为何续卷、宣告收官或完结: %w", a.Type, errs.ErrToolArgs)
+		return nil, fmt.Errorf("%s requires reason parameter: check completion checklist, state in one sentence why continuing, wrapping up, or completing: %w", a.Type, errs.ErrToolArgs)
 	}
 	var volumeEndFacts json.RawMessage
 	if volumeEnd {
@@ -245,7 +245,7 @@ func (t *SaveFoundationTool) Execute(_ context.Context, args json.RawMessage) (j
 			return nil, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
 		}
 		if p != nil && p.Phase == domain.PhaseComplete {
-			return nil, fmt.Errorf("全书已完结（phase=complete），不允许追加新卷: %w", errs.ErrToolPrecondition)
+			return nil, fmt.Errorf("book is completed (phase=complete), cannot append new volume: %w", errs.ErrToolPrecondition)
 		}
 		var vol domain.VolumeOutline
 		if err := decode("append_volume", &vol); err != nil {
@@ -284,19 +284,19 @@ func (t *SaveFoundationTool) Execute(_ context.Context, args json.RawMessage) (j
 			return nil, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, perr)
 		}
 		if progress == nil {
-			return nil, fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+			return nil, fmt.Errorf("progress is missing: %w", errs.ErrToolPrecondition)
 		}
 		if progress.Phase != domain.PhaseWriting {
-			return nil, fmt.Errorf("complete_book 仅在 writing 阶段可调用（当前 phase=%s）: %w", progress.Phase, errs.ErrToolPrecondition)
+			return nil, fmt.Errorf("complete_book only allowed in writing phase (current phase=%s): %w", progress.Phase, errs.ErrToolPrecondition)
 		}
 		if len(progress.PendingRewrites) > 0 {
-			return nil, fmt.Errorf("还有 %d 章在返工队列中，处理完再调 complete_book: %w", len(progress.PendingRewrites), errs.ErrToolPrecondition)
+			return nil, fmt.Errorf("there are %d chapters in pending rewrites, complete them before calling complete_book: %w", len(progress.PendingRewrites), errs.ErrToolPrecondition)
 		}
 		// 可枚举的完本前置校验必须在代码层(三分法),不能只依赖提示词里的
 		// "完结判定清单"——真实事故:规划刚落盘 phase 翻到 writing,弱模型顺手
 		// 误调 complete_book,0/68 章被直接标记完本。
 		if len(progress.CompletedChapters) == 0 {
-			return nil, fmt.Errorf("一章未写不可完本;规划完成后写作由系统自动推进,无需调用 complete_book: %w", errs.ErrToolPrecondition)
+			return nil, fmt.Errorf("cannot complete book without writing a single chapter; system automatically advances writing after planning, no need to call complete_book: %w", errs.ErrToolPrecondition)
 		}
 		next := progress.NextChapter()
 		if progress.Layered {
@@ -305,10 +305,10 @@ func (t *SaveFoundationTool) Execute(_ context.Context, args json.RawMessage) (j
 				return nil, fmt.Errorf("load outlined chapters: %w: %w", errs.ErrStoreRead, outlineErr)
 			}
 			if next <= len(outline) {
-				return nil, fmt.Errorf("当前详细大纲还有未写章节（下一章 %d/当前已细化 %d），不可完本；想提前收束请改用 append_volume 且卷 JSON 顶层带 \"final\": true 宣告收官卷: %w", next, len(outline), errs.ErrToolPrecondition)
+				return nil, fmt.Errorf("detailed outline has unwritten chapters (next %d/refined %d), cannot complete book; to wrap up early use append_volume with \"final\": true at volume JSON top level: %w", next, len(outline), errs.ErrToolPrecondition)
 			}
 		} else if progress.TotalChapters > 0 && next <= progress.TotalChapters {
-			return nil, fmt.Errorf("大纲内还有未写章节（下一章 %d/共 %d），不可完本；想提前收束请改用 append_volume 且卷 JSON 顶层带 \"final\": true 宣告收官卷: %w", next, progress.TotalChapters, errs.ErrToolPrecondition)
+			return nil, fmt.Errorf("outline has unwritten chapters (next %d/total %d), cannot complete book; to wrap up early use append_volume with \"final\": true at volume JSON top level: %w", next, progress.TotalChapters, errs.ErrToolPrecondition)
 		}
 		// 活跃长线未收束不可完本——OpenThreads 的字段契约即"需收束才能结局"。这不是
 		// 语义复判：真认为已全部收束，先 update_compass 清空 open_threads 再完本，把
@@ -319,7 +319,7 @@ func (t *SaveFoundationTool) Execute(_ context.Context, args json.RawMessage) (j
 			return nil, fmt.Errorf("load compass: %w: %w", errs.ErrStoreRead, err)
 		}
 		if compass != nil && len(compass.OpenThreads) > 0 {
-			return nil, fmt.Errorf("compass 还有 %d 条活跃长线未收束（如：%s），不可完本。确认已全部收束请先 update_compass 清空 open_threads 再调 complete_book；仍需展开请 append_volume（可带 \"final\": true 宣告收官卷）: %w",
+			return nil, fmt.Errorf("compass has %d active open threads (e.g.: %s), cannot complete book. update_compass to clear open_threads if all resolved, or append_volume (with \"final\": true to declare wrap-up): %w",
 				len(compass.OpenThreads), compass.OpenThreads[0], errs.ErrToolPrecondition)
 		}
 		if err := t.store.Progress.MarkComplete(); err != nil {

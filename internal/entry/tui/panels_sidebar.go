@@ -36,7 +36,7 @@ func renderStateContent(snap host.UISnapshot, contentW int) string {
 		overview.WriteString(renderField("推进", "自动"))
 	}
 	if snap.Layered {
-		overview.WriteString(renderField("已完成", fmt.Sprintf("%d 章", snap.CompletedCount)))
+		overview.WriteString(renderField("已Hoàn thành", fmt.Sprintf("%d 章", snap.CompletedCount)))
 		// 分层动态规划：右栏只展示当前弧已展开的章节，"已规划"也用同一个口径，
 		// 否则会把骨架弧 EstimatedChapters 的粗估算（如 92）混进来，与可见大纲对不上。
 		// progress.TotalChapters 那个值仅用于内部 ContextProfile 决策，不要泄漏到 UI。
@@ -48,7 +48,7 @@ func renderStateContent(snap host.UISnapshot, contentW int) string {
 		case snap.TotalChapters > 0:
 			overview.WriteString(renderField("进度", fmt.Sprintf("%d / %d 章", snap.CompletedCount, snap.TotalChapters)))
 		default:
-			overview.WriteString(renderField("已完成", fmt.Sprintf("%d 章", snap.CompletedCount)))
+			overview.WriteString(renderField("已Hoàn thành", fmt.Sprintf("%d 章", snap.CompletedCount)))
 		}
 	}
 	overview.WriteString(renderField("字数", formatNumber(snap.TotalWordCount)))
@@ -83,7 +83,7 @@ func renderStateContent(snap host.UISnapshot, contentW int) string {
 		if snap.RewriteReason != "" {
 			rewrite.WriteString(renderField("原因", truncate(snap.RewriteReason, contentW-10)))
 		}
-		sections = append(sections, renderSidebarSection("返工", rewrite.String(), contentW))
+		sections = append(sections, renderSidebarSection("Viết lại", rewrite.String(), contentW))
 	}
 
 	if snap.PendingSteer != "" {
@@ -232,9 +232,9 @@ func snapshotHeadline(snap host.UISnapshot) string {
 	}
 	if len(snap.PendingRewrites) > 0 {
 		if !snap.IsRunning {
-			return "待恢复：返工处理"
+			return "待恢复：Viết lại处理"
 		}
-		return "等待返工处理"
+		return "等待Viết lại处理"
 	}
 	if snap.AdvanceMode == "review" && !snap.IsRunning && snap.Phase == "writing" {
 		return "逐章验收：等待放行下一章"
@@ -251,7 +251,7 @@ func snapshotPhaseLabel(phase string) string {
 	case "writing":
 		return "写作"
 	case "complete":
-		return "完成"
+		return "Hoàn thành"
 	case "init":
 		return "初始化"
 	default:
@@ -265,13 +265,13 @@ func snapshotPhaseLabel(phase string) string {
 func snapshotRuntimeStateLabel(state string) string {
 	switch state {
 	case "running":
-		return "运行中"
+		return "Đang chạy"
 	case "pausing":
-		return "暂停中"
+		return "Tạm dừng中"
 	case "paused":
-		return "已暂停"
+		return "已Tạm dừng"
 	case "completed":
-		return "已完成"
+		return "已Hoàn thành"
 	default:
 		return "空闲"
 	}
@@ -681,7 +681,7 @@ func agentOrder(name string) int {
 func agentStateLabel(state string) string {
 	switch state {
 	case "running":
-		return "运行中"
+		return "Đang chạy"
 	case "failed":
 		return "异常"
 	case "idle":

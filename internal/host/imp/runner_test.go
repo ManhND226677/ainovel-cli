@@ -1,4 +1,4 @@
-package imp
+﻿package imp
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/tools"
 )
 
-// testDeps 构造三个语义函数同用一个 mock 档位的最小 Deps。
+// testDeps æž„é€ ä¸‰ä¸ªè¯­ä¹‰å‡½æ•°åŒç”¨ä¸€ä¸ª mock æ¡£ä½çš„æœ€å° Depsã€‚
 func testDeps(st *store.Store, m callModel) Deps {
 	c := Caller{Model: m}
 	return Deps{
@@ -25,8 +25,8 @@ func testDeps(st *store.Store, m callModel) Deps {
 	}
 }
 
-// TestRunEndToEnd 用 mock 模型驱动完整管线 ingest→segment→analyze→synthesize→publish，
-// 经真实 commit_chapter 落盘，验证正式 Foundation 与全部章节就绪。
+// TestRunEndToEnd ç”¨ mock æ¨¡åž‹é©±åŠ¨å®Œæ•´ç®¡çº¿ ingestâ†’segmentâ†’analyzeâ†’synthesizeâ†’publishï¼Œ
+// ç»çœŸå®ž commit_chapter è½ç›˜ï¼ŒéªŒè¯æ­£å¼ Foundation ä¸Žå…¨éƒ¨ç« èŠ‚å°±ç»ªã€‚
 func TestRunEndToEnd(t *testing.T) {
 	dir := t.TempDir()
 	st := store.NewStore(dir)
@@ -34,15 +34,15 @@ func TestRunEndToEnd(t *testing.T) {
 		t.Fatalf("store init: %v", err)
 	}
 	src := filepath.Join(dir, "book.txt")
-	if err := os.WriteFile(src, []byte("第一章\n正文一\n第二章\n正文二\n"), 0o644); err != nil {
+	if err := os.WriteFile(src, []byte("ç¬¬ä¸€ç« \næ­£æ–‡ä¸€\nç¬¬äºŒç« \næ­£æ–‡äºŒ\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	seg := boundariesJSON(
-		boundaryFixture("L1", "", kindChapter, "第一章"),
-		boundaryFixture("L3", "", kindChapter, "第二章"),
+		boundaryFixture("L1", "", kindChapter, "ç¬¬ä¸€ç« "),
+		boundaryFixture("L3", "", kindChapter, "ç¬¬äºŒç« "),
 	)
-	ana := `{"chapters":[` + factsJSON(1, "第一章") + `,` + factsJSON(2, "第二章") + `]}`
+	ana := `{"chapters":[` + factsJSON(1, "ç¬¬ä¸€ç« ") + `,` + factsJSON(2, "ç¬¬äºŒç« ") + `]}`
 	syn := synthesisFixtureJSON(2, storyClosed)
 	m := &mockModel{responses: []string{seg, ana, syn}}
 
@@ -61,33 +61,33 @@ func TestRunEndToEnd(t *testing.T) {
 		}
 	}
 	if runErr != nil {
-		t.Fatalf("管线失败：%v", runErr)
+		t.Fatalf("ç®¡çº¿å¤±è´¥ï¼š%v", runErr)
 	}
 	if !doneSeen {
-		t.Fatal("未收到 StageDone")
+		t.Fatal("æœªæ”¶åˆ° StageDone")
 	}
-	// 正式状态就绪：premise 与覆盖全章的扁平大纲已落盘（world_rules 合法为空，不做要求）。
+	// æ­£å¼çŠ¶æ€å°±ç»ªï¼špremise ä¸Žè¦†ç›–å…¨ç« çš„æ‰å¹³å¤§çº²å·²è½ç›˜ï¼ˆworld_rules åˆæ³•ä¸ºç©ºï¼Œä¸åšè¦æ±‚ï¼‰ã€‚
 	if p, _ := st.Outline.LoadPremise(); p == "" {
-		t.Fatal("premise 未落盘")
+		t.Fatal("premise æœªè½ç›˜")
 	}
 	if o, _ := st.Outline.LoadOutline(); len(o) != 2 {
-		t.Fatalf("扁平大纲应覆盖 2 章，得 %d", len(o))
+		t.Fatalf("æ‰å¹³å¤§çº²åº”è¦†ç›– 2 ç« ï¼Œå¾— %d", len(o))
 	}
 	prog, _ := st.Progress.Load()
 	if prog == nil || len(prog.CompletedChapters) != 2 {
-		t.Fatalf("应完成 2 章：%+v", prog)
+		t.Fatalf("åº”å®Œæˆ 2 ç« ï¼š%+v", prog)
 	}
 	if active, done, err := ResumeStatus(st); err != nil || !active || !done {
-		t.Fatalf("ResumeStatus 应为 active&done，得 active=%v done=%v", active, done)
+		t.Fatalf("ResumeStatus åº”ä¸º active&doneï¼Œå¾— active=%v done=%v", active, done)
 	}
-	// --continue：不设导入完成 Hold（交由 host 自动接力）。
+	// --continueï¼šä¸è®¾å¯¼å…¥å®Œæˆ Holdï¼ˆäº¤ç”± host è‡ªåŠ¨æŽ¥åŠ›ï¼‰ã€‚
 	if meta, _ := st.RunMeta.Load(); meta != nil && meta.AdvanceHold != nil {
-		t.Fatalf("--continue 不应留下导入完成 Hold：%+v", meta.AdvanceHold)
+		t.Fatalf("--continue ä¸åº”ç•™ä¸‹å¯¼å…¥å®Œæˆ Holdï¼š%+v", meta.AdvanceHold)
 	}
 }
 
-// TestRunSetsCompletionHold 验证非 --continue 导入完成后设置 boundary Hold（RFC §12.4）。
-// Hold 是"导入后不误续写"的唯一保障，必须在发布路径持久化。
+// TestRunSetsCompletionHold éªŒè¯éž --continue å¯¼å…¥å®ŒæˆåŽè®¾ç½® boundary Holdï¼ˆRFC Â§12.4ï¼‰ã€‚
+// Hold æ˜¯"å¯¼å…¥åŽä¸è¯¯ç»­å†™"çš„å”¯ä¸€ä¿éšœï¼Œå¿…é¡»åœ¨å‘å¸ƒè·¯å¾„æŒä¹…åŒ–ã€‚
 func TestRunSetsCompletionHold(t *testing.T) {
 	dir := t.TempDir()
 	st := store.NewStore(dir)
@@ -95,24 +95,24 @@ func TestRunSetsCompletionHold(t *testing.T) {
 		t.Fatalf("store init: %v", err)
 	}
 	src := filepath.Join(dir, "book.txt")
-	if err := os.WriteFile(src, []byte("第一章\n正文一\n第二章\n正文二\n"), 0o644); err != nil {
+	if err := os.WriteFile(src, []byte("ç¬¬ä¸€ç« \næ­£æ–‡ä¸€\nç¬¬äºŒç« \næ­£æ–‡äºŒ\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	seg := boundariesJSON(
-		boundaryFixture("L1", "", kindChapter, "第一章"),
-		boundaryFixture("L3", "", kindChapter, "第二章"),
+		boundaryFixture("L1", "", kindChapter, "ç¬¬ä¸€ç« "),
+		boundaryFixture("L3", "", kindChapter, "ç¬¬äºŒç« "),
 	)
-	ana := `{"chapters":[` + factsJSON(1, "第一章") + `,` + factsJSON(2, "第二章") + `]}`
+	ana := `{"chapters":[` + factsJSON(1, "ç¬¬ä¸€ç« ") + `,` + factsJSON(2, "ç¬¬äºŒç« ") + `]}`
 	syn := synthesisFixtureJSON(2, storyClosed)
 	m := &mockModel{responses: []string{seg, ana, syn}}
 
-	ch, err := Run(context.Background(), testDeps(st, m), Options{SourcePath: src, AutoConfirm: true}) // 无 --continue
+	ch, err := Run(context.Background(), testDeps(st, m), Options{SourcePath: src, AutoConfirm: true}) // æ—  --continue
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	for ev := range ch {
 		if ev.Stage == StageError {
-			t.Fatalf("管线失败：%v", ev.Err)
+			t.Fatalf("ç®¡çº¿å¤±è´¥ï¼š%v", ev.Err)
 		}
 	}
 	meta, err := st.RunMeta.Load()
@@ -120,13 +120,13 @@ func TestRunSetsCompletionHold(t *testing.T) {
 		t.Fatalf("load run meta: %v", err)
 	}
 	if meta == nil || meta.AdvanceHold == nil {
-		t.Fatalf("导入完成应设置 boundary Hold，得 %+v", meta)
+		t.Fatalf("å¯¼å…¥å®Œæˆåº”è®¾ç½® boundary Holdï¼Œå¾— %+v", meta)
 	}
 }
 
-// TestRunRejectsDifferentSource 守护换源拦截（RFC §12.1/§18.2）：工作区进行中传入不同
-// 内容的源文件必须明确报错——ingest 只在无工作区时执行，不比对会静默从旧书断点继续、
-// 把旧书发布完毕而新文件一个字节都没读。同一文件重复传路径是常见恢复习惯，按内容摘要比对放行。
+// TestRunRejectsDifferentSource å®ˆæŠ¤æ¢æºæ‹¦æˆªï¼ˆRFC Â§12.1/Â§18.2ï¼‰ï¼šå·¥ä½œåŒºè¿›è¡Œä¸­ä¼ å…¥ä¸åŒ
+// å†…å®¹çš„æºæ–‡ä»¶å¿…é¡»æ˜Žç¡®æŠ¥é”™â€”â€”ingest åªåœ¨æ— å·¥ä½œåŒºæ—¶æ‰§è¡Œï¼Œä¸æ¯”å¯¹ä¼šé™é»˜ä»Žæ—§ä¹¦æ–­ç‚¹ç»§ç»­ã€
+// æŠŠæ—§ä¹¦å‘å¸ƒå®Œæ¯•è€Œæ–°æ–‡ä»¶ä¸€ä¸ªå­—èŠ‚éƒ½æ²¡è¯»ã€‚åŒä¸€æ–‡ä»¶é‡å¤ä¼ è·¯å¾„æ˜¯å¸¸è§æ¢å¤ä¹ æƒ¯ï¼ŒæŒ‰å†…å®¹æ‘˜è¦æ¯”å¯¹æ”¾è¡Œã€‚
 func TestRunRejectsDifferentSource(t *testing.T) {
 	dir := t.TempDir()
 	st := store.NewStore(dir)
@@ -134,14 +134,14 @@ func TestRunRejectsDifferentSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := filepath.Join(dir, "a.txt")
-	if err := os.WriteFile(a, []byte("第一章\n正文一\n"), 0o644); err != nil {
+	if err := os.WriteFile(a, []byte("ç¬¬ä¸€ç« \næ­£æ–‡ä¸€\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := Ingest(dir, a, Options{}.intent()); err != nil {
-		t.Fatalf("建立工作区：%v", err)
+		t.Fatalf("å»ºç«‹å·¥ä½œåŒºï¼š%v", err)
 	}
 	b := filepath.Join(dir, "b.txt")
-	if err := os.WriteFile(b, []byte("完全不同的另一本书\n"), 0o644); err != nil {
+	if err := os.WriteFile(b, []byte("å®Œå…¨ä¸åŒçš„å¦ä¸€æœ¬ä¹¦\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	ch, err := Run(context.Background(), testDeps(st, &mockModel{responses: []string{"{}"}}), Options{SourcePath: b})
@@ -154,51 +154,51 @@ func TestRunRejectsDifferentSource(t *testing.T) {
 			runErr = ev.Err
 		}
 	}
-	if runErr == nil || !strings.Contains(runErr.Error(), "内容不同") {
-		t.Fatalf("不同源文件应被明确拒绝，得 %v", runErr)
+	if runErr == nil || (!strings.Contains(runErr.Error(), "content differs") && !strings.Contains(runErr.Error(), "nội dung khác nhau")) {
+		t.Fatalf("ä¸åŒæºæ–‡ä»¶åº”è¢«æ˜Žç¡®æ‹’ç»ï¼Œå¾— %v", runErr)
 	}
 }
 
-// TestConfirmNotesGate 守护 --yes 的容错门槛：语义容错（Notes 非空）发生过的切分结构
-// 被确定性改写过，不由未看预览的 --yes 盲放行；TUI 预览后按 y（AcceptSegmentation）放行，
-// 确认方法记 user_confirmed 溯源。
+// TestConfirmNotesGate å®ˆæŠ¤ --yes çš„å®¹é”™é—¨æ§›ï¼šè¯­ä¹‰å®¹é”™ï¼ˆNotes éžç©ºï¼‰å‘ç”Ÿè¿‡çš„åˆ‡åˆ†ç»“æž„
+// è¢«ç¡®å®šæ€§æ”¹å†™è¿‡ï¼Œä¸ç”±æœªçœ‹é¢„è§ˆçš„ --yes ç›²æ”¾è¡Œï¼›TUI é¢„è§ˆåŽæŒ‰ yï¼ˆAcceptSegmentationï¼‰æ”¾è¡Œï¼Œ
+// ç¡®è®¤æ–¹æ³•è®° user_confirmed æº¯æºã€‚
 func TestConfirmNotesGate(t *testing.T) {
 	newRunner := func(opts Options, notes []string) *runner {
 		ws := &Workspace{dir: t.TempDir()}
 		if err := ws.writeJSON(fileIntent, Intent{}); err != nil {
 			t.Fatal(err)
 		}
-		seg := Segmentation{Chapters: []ChapterSpan{{Number: 1, Title: "第一章", End: 10}}, Notes: notes}
+		seg := Segmentation{Chapters: []ChapterSpan{{Number: 1, Title: "ç¬¬ä¸€ç« ", End: 10}}, Notes: notes}
 		if err := writeArtifact(ws, fileSegmentation, "d", seg); err != nil {
 			t.Fatal(err)
 		}
 		return &runner{opts: opts, events: make(chan Event, 8), ws: ws}
 	}
-	r := newRunner(Options{AutoConfirm: true}, []string{"空正文占位并入前段"})
+	r := newRunner(Options{AutoConfirm: true}, []string{"ç©ºæ­£æ–‡å ä½å¹¶å…¥å‰æ®µ"})
 	if r.confirm() {
-		t.Fatal("--yes 不应放行带容错说明的切分")
+		t.Fatal("--yes ä¸åº”æ”¾è¡Œå¸¦å®¹é”™è¯´æ˜Žçš„åˆ‡åˆ†")
 	}
-	if ev := <-r.events; !strings.Contains(ev.Message, "未自动放行") {
-		t.Fatalf("预览应说明未放行原因：%q", ev.Message)
+	if ev := <-r.events; !strings.Contains(ev.Message, "未自动放行，请人工核对") && !strings.Contains(ev.Message, "vui lòng kiểm tra thủ công") {
+		t.Fatalf("é¢„è§ˆåº”è¯´æ˜Žæœªæ”¾è¡ŒåŽŸå› ï¼š%q", ev.Message)
 	}
 	if !newRunner(Options{AutoConfirm: true}, nil).confirm() {
-		t.Fatal("--yes 应放行无容错说明的切分")
+		t.Fatal("--yes åº”æ”¾è¡Œæ— å®¹é”™è¯´æ˜Žçš„åˆ‡åˆ†")
 	}
-	r = newRunner(Options{AcceptSegmentation: true}, []string{"空正文占位并入前段"})
+	r = newRunner(Options{AcceptSegmentation: true}, []string{"ç©ºæ­£æ–‡å ä½å¹¶å…¥å‰æ®µ"})
 	if !r.confirm() {
-		t.Fatal("预览后的人工 y 应放行带容错说明的切分")
+		t.Fatal("é¢„è§ˆåŽçš„äººå·¥ y åº”æ”¾è¡Œå¸¦å®¹é”™è¯´æ˜Žçš„åˆ‡åˆ†")
 	}
 	conf, err := readArtifact[Confirmation](r.ws, fileConfirmation)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if conf.Payload.Method != confirmMethodUser {
-		t.Fatalf("人工确认应记 user_confirmed，得 %q", conf.Payload.Method)
+		t.Fatalf("äººå·¥ç¡®è®¤åº”è®° user_confirmedï¼Œå¾— %q", conf.Payload.Method)
 	}
 }
 
-// TestStoryChoiceIgnoresStaleResolution 守护 #5：重新综合后旧故事裁定失效，
-// storyChoice 不得把旧 open/closed 静默套到新 synthesis 上（否则用户不会被重新征询）。
+// TestStoryChoiceIgnoresStaleResolution å®ˆæŠ¤ #5ï¼šé‡æ–°ç»¼åˆåŽæ—§æ•…äº‹è£å®šå¤±æ•ˆï¼Œ
+// storyChoice ä¸å¾—æŠŠæ—§ open/closed é™é»˜å¥—åˆ°æ–° synthesis ä¸Šï¼ˆå¦åˆ™ç”¨æˆ·ä¸ä¼šè¢«é‡æ–°å¾è¯¢ï¼‰ã€‚
 func TestStoryChoiceIgnoresStaleResolution(t *testing.T) {
 	ws := OpenWorkspace(t.TempDir())
 	if err := ws.writeJSON(fileIntent, Intent{}); err != nil {
@@ -213,19 +213,19 @@ func TestStoryChoiceIgnoresStaleResolution(t *testing.T) {
 	}
 	r := &runner{ws: ws}
 	if got, err := r.storyChoice(); err != nil || got != storyClosed {
-		t.Fatalf("绑定当前 synthesis 的裁定应返回 closed，得 %q", got)
+		t.Fatalf("ç»‘å®šå½“å‰ synthesis çš„è£å®šåº”è¿”å›ž closedï¼Œå¾— %q", got)
 	}
-	// 重新综合：改写 synthesis → 旧裁定 InputDigest 失配，应被忽略，回到"需重新征询"（返回空）。
+	// é‡æ–°ç»¼åˆï¼šæ”¹å†™ synthesis â†’ æ—§è£å®š InputDigest å¤±é…ï¼Œåº”è¢«å¿½ç•¥ï¼Œå›žåˆ°"éœ€é‡æ–°å¾è¯¢"ï¼ˆè¿”å›žç©ºï¼‰ã€‚
 	if err := writeArtifact(ws, fileSynthesis, "d", BookSynthesis{Premise: "p2", StoryStatus: storyUncertain}); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := r.storyChoice(); err != nil || got != "" {
-		t.Fatalf("重新综合后旧裁定应失效返回空，得 %q", got)
+		t.Fatalf("é‡æ–°ç»¼åˆåŽæ—§è£å®šåº”å¤±æ•ˆè¿”å›žç©ºï¼Œå¾— %q", got)
 	}
 }
 
-// TestBudgetsFromDepsPerTier 守护档位旋钮（RFC §13.1）：各语义函数预算按各自档位派生，
-// 廉价档位的小窗口只约束它自己的函数，不拖累其它阶段。
+// TestBudgetsFromDepsPerTier å®ˆæŠ¤æ¡£ä½æ—‹é’®ï¼ˆRFC Â§13.1ï¼‰ï¼šå„è¯­ä¹‰å‡½æ•°é¢„ç®—æŒ‰å„è‡ªæ¡£ä½æ´¾ç”Ÿï¼Œ
+// å»‰ä»·æ¡£ä½çš„å°çª—å£åªçº¦æŸå®ƒè‡ªå·±çš„å‡½æ•°ï¼Œä¸æ‹–ç´¯å…¶å®ƒé˜¶æ®µã€‚
 func TestBudgetsFromDepsPerTier(t *testing.T) {
 	small := ModelRuntime{ContextTokens: 32000, MaxOutputTokens: 4000}
 	big := ModelRuntime{ContextTokens: 200000, MaxOutputTokens: 16000}
@@ -235,15 +235,15 @@ func TestBudgetsFromDepsPerTier(t *testing.T) {
 		Synthesize: Caller{Runtime: big},
 	})
 	if b.SegmentChunkBytes >= b.Analyze.ContextBytes {
-		t.Fatalf("segment 小档位窗口应只约束自身：seg=%d analyze=%d", b.SegmentChunkBytes, b.Analyze.ContextBytes)
+		t.Fatalf("segment å°æ¡£ä½çª—å£åº”åªçº¦æŸè‡ªèº«ï¼šseg=%d analyze=%d", b.SegmentChunkBytes, b.Analyze.ContextBytes)
 	}
 	if b.Analyze.MaxOutputTokens != 16000 || b.SegmentMaxTokens != 4000 {
-		t.Fatalf("输出预算应各取自身档位上限：analyze=%d segment=%d", b.Analyze.MaxOutputTokens, b.SegmentMaxTokens)
+		t.Fatalf("è¾“å‡ºé¢„ç®—åº”å„å–è‡ªèº«æ¡£ä½ä¸Šé™ï¼šanalyze=%d segment=%d", b.Analyze.MaxOutputTokens, b.SegmentMaxTokens)
 	}
 }
 
-// TestRunSavesFailureOnContractViolation 守护 §14.2：原生 Schema 契约违约
-// 必须立即暴露，并把原始响应与元数据落 failures/。
+// TestRunSavesFailureOnContractViolation å®ˆæŠ¤ Â§14.2ï¼šåŽŸç”Ÿ Schema å¥‘çº¦è¿çº¦
+// å¿…é¡»ç«‹å³æš´éœ²ï¼Œå¹¶æŠŠåŽŸå§‹å“åº”ä¸Žå…ƒæ•°æ®è½ failures/ã€‚
 func TestRunSavesFailureOnContractViolation(t *testing.T) {
 	dir := t.TempDir()
 	st := store.NewStore(dir)
@@ -251,10 +251,10 @@ func TestRunSavesFailureOnContractViolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := filepath.Join(dir, "book.txt")
-	if err := os.WriteFile(src, []byte("第一章\n正文\n"), 0o644); err != nil {
+	if err := os.WriteFile(src, []byte("ç¬¬ä¸€ç« \næ­£æ–‡\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	m := &nativeImportModel{mockModel: &mockModel{responses: []string{"这不是 JSON"}}}
+	m := &nativeImportModel{mockModel: &mockModel{responses: []string{"è¿™ä¸æ˜¯ JSON"}}}
 	ch, err := Run(context.Background(), testDeps(st, m), Options{SourcePath: src, AutoConfirm: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -266,23 +266,23 @@ func TestRunSavesFailureOnContractViolation(t *testing.T) {
 		}
 	}
 	if !failed {
-		t.Fatal("非法输出应以 StageError 结束")
+		t.Fatal("éžæ³•è¾“å‡ºåº”ä»¥ StageError ç»“æŸ")
 	}
 	ws := OpenWorkspace(dir)
 	if !ws.has("failures/last-response.txt") {
-		t.Fatal("应保存最后一次原始模型响应")
+		t.Fatal("åº”ä¿å­˜æœ€åŽä¸€æ¬¡åŽŸå§‹æ¨¡åž‹å“åº”")
 	}
 	var meta FailureMeta
 	if err := ws.readJSON("failures/last.json", &meta); err != nil {
-		t.Fatalf("读失败元数据：%v", err)
+		t.Fatalf("è¯»å¤±è´¥å…ƒæ•°æ®ï¼š%v", err)
 	}
 	if meta.Stage != string(ActionSegment) {
-		t.Fatalf("失败元数据应标注 segment 阶段，得 %q", meta.Stage)
+		t.Fatalf("å¤±è´¥å…ƒæ•°æ®åº”æ ‡æ³¨ segment é˜¶æ®µï¼Œå¾— %q", meta.Stage)
 	}
 }
 
-// TestRunGuidanceResegments 守护 §18.3：恢复时携带 --guide 使旧切分自然失配，
-// 按新指导重新识别并再次停在确认处；新切分 InputDigest 绑定指导文本。
+// TestRunGuidanceResegments å®ˆæŠ¤ Â§18.3ï¼šæ¢å¤æ—¶æºå¸¦ --guide ä½¿æ—§åˆ‡åˆ†è‡ªç„¶å¤±é…ï¼Œ
+// æŒ‰æ–°æŒ‡å¯¼é‡æ–°è¯†åˆ«å¹¶å†æ¬¡åœåœ¨ç¡®è®¤å¤„ï¼›æ–°åˆ‡åˆ† InputDigest ç»‘å®šæŒ‡å¯¼æ–‡æœ¬ã€‚
 func TestRunGuidanceResegments(t *testing.T) {
 	dir := t.TempDir()
 	st := store.NewStore(dir)
@@ -290,13 +290,13 @@ func TestRunGuidanceResegments(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := filepath.Join(dir, "book.txt")
-	if err := os.WriteFile(src, []byte("第一章\n正文一\n第二章\n正文二\n"), 0o644); err != nil {
+	if err := os.WriteFile(src, []byte("ç¬¬ä¸€ç« \næ­£æ–‡ä¸€\nç¬¬äºŒç« \næ­£æ–‡äºŒ\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	drain := func(ch <-chan Event) (awaiting bool) {
 		for ev := range ch {
 			if ev.Stage == StageError {
-				t.Fatalf("管线失败：%v", ev.Err)
+				t.Fatalf("ç®¡çº¿å¤±è´¥ï¼š%v", ev.Err)
 			}
 			if ev.Stage == StageAwaitingConfirmation {
 				awaiting = true
@@ -304,85 +304,86 @@ func TestRunGuidanceResegments(t *testing.T) {
 		}
 		return awaiting
 	}
-	// 首次交互导入：模型把全书切成 1 章，停在确认。
-	one := boundariesJSON(boundaryFixture("L1", "", kindChapter, "第一章"))
+	// é¦–æ¬¡äº¤äº’å¯¼å…¥ï¼šæ¨¡åž‹æŠŠå…¨ä¹¦åˆ‡æˆ 1 ç« ï¼Œåœåœ¨ç¡®è®¤ã€‚
+	one := boundariesJSON(boundaryFixture("L1", "", kindChapter, "ç¬¬ä¸€ç« "))
 	ch, err := Run(context.Background(), testDeps(st, &mockModel{responses: []string{one}}), Options{SourcePath: src})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if !drain(ch) {
-		t.Fatal("首次导入应停在切分确认")
+		t.Fatal("é¦–æ¬¡å¯¼å…¥åº”åœåœ¨åˆ‡åˆ†ç¡®è®¤")
 	}
-	// 带指导恢复：旧切分失配 → 重识别为 2 章，再次停在确认。
+	// å¸¦æŒ‡å¯¼æ¢å¤ï¼šæ—§åˆ‡åˆ†å¤±é… â†’ é‡è¯†åˆ«ä¸º 2 ç« ï¼Œå†æ¬¡åœåœ¨ç¡®è®¤ã€‚
 	two := boundariesJSON(
-		boundaryFixture("L1", "", kindChapter, "第一章"),
-		boundaryFixture("L3", "", kindChapter, "第二章"),
+		boundaryFixture("L1", "", kindChapter, "ç¬¬ä¸€ç« "),
+		boundaryFixture("L3", "", kindChapter, "ç¬¬äºŒç« "),
 	)
-	guidance := "第二章也是独立章节"
+	guidance := "ç¬¬äºŒç« ä¹Ÿæ˜¯ç‹¬ç«‹ç« èŠ‚"
 	ch2, err := Run(context.Background(), testDeps(st, &mockModel{responses: []string{two}}), Options{Guidance: guidance})
 	if err != nil {
-		t.Fatalf("恢复 Run: %v", err)
+		t.Fatalf("æ¢å¤ Run: %v", err)
 	}
 	if !drain(ch2) {
-		t.Fatal("重识别后应再次停在切分确认")
+		t.Fatal("é‡è¯†åˆ«åŽåº”å†æ¬¡åœåœ¨åˆ‡åˆ†ç¡®è®¤")
 	}
 	ws := OpenWorkspace(dir)
 	art, err := readArtifact[Segmentation](ws, fileSegmentation)
 	if err != nil {
-		t.Fatalf("读切分工件：%v", err)
+		t.Fatalf("è¯»åˆ‡åˆ†å·¥ä»¶ï¼š%v", err)
 	}
 	if len(art.Payload.Chapters) != 2 {
-		t.Fatalf("应按指导切成 2 章，得 %d", len(art.Payload.Chapters))
+		t.Fatalf("åº”æŒ‰æŒ‡å¯¼åˆ‡æˆ 2 ç« ï¼Œå¾— %d", len(art.Payload.Chapters))
 	}
 	norm, _ := ws.LoadSource()
 	if art.InputDigest != segmentInputDigest(Digest(norm), guidance, segmentPromptVersion) {
-		t.Fatal("新切分 InputDigest 应绑定指导文本")
+		t.Fatal("æ–°åˆ‡åˆ† InputDigest åº”ç»‘å®šæŒ‡å¯¼æ–‡æœ¬")
 	}
 }
 
-// TestBudgetsFromRuntime 验证双预算随模型真实容量放大，能力未知时回退保守默认（RFC §9.2/§21）。
+// TestBudgetsFromRuntime éªŒè¯åŒé¢„ç®—éšæ¨¡åž‹çœŸå®žå®¹é‡æ”¾å¤§ï¼Œèƒ½åŠ›æœªçŸ¥æ—¶å›žé€€ä¿å®ˆé»˜è®¤ï¼ˆRFC Â§9.2/Â§21ï¼‰ã€‚
 func TestBudgetsFromRuntime(t *testing.T) {
 	if got := budgetsFromRuntime(ModelRuntime{}); got != DefaultRunBudgets() {
-		t.Fatal("能力未知应回退保守默认")
+		t.Fatal("èƒ½åŠ›æœªçŸ¥åº”å›žé€€ä¿å®ˆé»˜è®¤")
 	}
 	small := budgetsFromRuntime(ModelRuntime{ContextTokens: 32000, MaxOutputTokens: 4000})
 	big := budgetsFromRuntime(ModelRuntime{ContextTokens: 200000, MaxOutputTokens: 16000})
 	if big.Analyze.ContextBytes <= small.Analyze.ContextBytes {
-		t.Fatalf("更大 context 应放大 analyze 输入预算：small=%d big=%d", small.Analyze.ContextBytes, big.Analyze.ContextBytes)
+		t.Fatalf("æ›´å¤§ context åº”æ”¾å¤§ analyze è¾“å…¥é¢„ç®—ï¼šsmall=%d big=%d", small.Analyze.ContextBytes, big.Analyze.ContextBytes)
 	}
 	if big.Analyze.MaxOutputTokens != 16000 {
-		t.Fatalf("输出预算应取模型 completion 上限，得 %d", big.Analyze.MaxOutputTokens)
+		t.Fatalf("è¾“å‡ºé¢„ç®—åº”å–æ¨¡åž‹ completion ä¸Šé™ï¼Œå¾— %d", big.Analyze.MaxOutputTokens)
 	}
 }
 
-// TestProfileForKeyPolicy 守护事件合并范围：请求退避（带截止时刻）同 Key 原地跳动；
-// 校验重问是跨调用的语义事件，不带 Key 各自成行——切分逐块调用，共用 Key 会让后块覆盖前块，
-// 面板只剩一条 unit_id 不断变化的行，排查线索全丢；step 是普通进度事件（无警示级别）。
+// TestProfileForKeyPolicy å®ˆæŠ¤äº‹ä»¶åˆå¹¶èŒƒå›´ï¼šè¯·æ±‚é€€é¿ï¼ˆå¸¦æˆªæ­¢æ—¶åˆ»ï¼‰åŒ Key åŽŸåœ°è·³åŠ¨ï¼›
+// æ ¡éªŒé‡é—®æ˜¯è·¨è°ƒç”¨çš„è¯­ä¹‰äº‹ä»¶ï¼Œä¸å¸¦ Key å„è‡ªæˆè¡Œâ€”â€”åˆ‡åˆ†é€å—è°ƒç”¨ï¼Œå…±ç”¨ Key ä¼šè®©åŽå—è¦†ç›–å‰å—ï¼Œ
+// é¢æ¿åªå‰©ä¸€æ¡ unit_id ä¸æ–­å˜åŒ–çš„è¡Œï¼ŒæŽ’æŸ¥çº¿ç´¢å…¨ä¸¢ï¼›step æ˜¯æ™®é€šè¿›åº¦äº‹ä»¶ï¼ˆæ— è­¦ç¤ºçº§åˆ«ï¼‰ã€‚
 func TestProfileForKeyPolicy(t *testing.T) {
 	r := &runner{events: make(chan Event, 3)}
 	prof := r.profileFor(Caller{}, StageSegmenting)
-	prof.notify("退避", time.Now().Add(time.Second))
-	prof.notify("重问", time.Time{})
-	prof.step(2, 12, "切分第 %d/%d 块...", 2, 12)
+	prof.notify("é€€é¿", time.Now().Add(time.Second))
+	prof.notify("é‡é—®", time.Time{})
+	prof.step(2, 12, "åˆ‡åˆ†ç¬¬ %d/%d å—...", 2, 12)
 	backoff, reask, step := <-r.events, <-r.events, <-r.events
 	if backoff.Key == "" || backoff.Level != "warn" || backoff.RetryAt.IsZero() {
-		t.Fatalf("请求退避应为带 Key 与截止时刻的 warn 事件：%+v", backoff)
+		t.Fatalf("è¯·æ±‚é€€é¿åº”ä¸ºå¸¦ Key ä¸Žæˆªæ­¢æ—¶åˆ»çš„ warn äº‹ä»¶ï¼š%+v", backoff)
 	}
 	if reask.Key != "" || reask.Level != "warn" {
-		t.Fatalf("校验重问应为不带 Key 的 warn 事件（独立成行）：%+v", reask)
+		t.Fatalf("æ ¡éªŒé‡é—®åº”ä¸ºä¸å¸¦ Key çš„ warn äº‹ä»¶ï¼ˆç‹¬ç«‹æˆè¡Œï¼‰ï¼š%+v", reask)
 	}
 	if step.Level != "" || step.Current != 2 || step.Total != 12 {
-		t.Fatalf("step 应为普通进度事件：%+v", step)
+		t.Fatalf("step åº”ä¸ºæ™®é€šè¿›åº¦äº‹ä»¶ï¼š%+v", step)
 	}
 }
 
-// TestCallProfileOptions 验证 callProfile 只负责输出预算与 thinking；response_format
-// 由 callStructured 根据模型事实和 Contract 选择，不能在 Profile 中重复组装。
+// TestCallProfileOptions éªŒè¯ callProfile åªè´Ÿè´£è¾“å‡ºé¢„ç®—ä¸Ž thinkingï¼›response_format
+// ç”± callStructured æ ¹æ®æ¨¡åž‹äº‹å®žå’Œ Contract é€‰æ‹©ï¼Œä¸èƒ½åœ¨ Profile ä¸­é‡å¤ç»„è£…ã€‚
 func TestCallProfileOptions(t *testing.T) {
 	if got := (callProfile{}).callOptions(100); len(got) != 1 {
-		t.Fatalf("零值只应带 maxTokens，得 %d 个 option", len(got))
+		t.Fatalf("é›¶å€¼åªåº”å¸¦ maxTokensï¼Œå¾— %d ä¸ª option", len(got))
 	}
 	if got := (callProfile{thinking: "high"}).callOptions(100); len(got) != 2 {
-		t.Fatalf("thinking 应带 2 个 option，得 %d", len(got))
+		t.Fatalf("thinking åº”å¸¦ 2 ä¸ª optionï¼Œå¾— %d", len(got))
 	}
 }
+

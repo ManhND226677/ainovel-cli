@@ -40,7 +40,7 @@ type Plan struct {
 }
 
 // ErrNotImplemented 标记占位策略尚未落地。
-var ErrNotImplemented = fmt.Errorf("startup mode not implemented")
+var ErrNotImplemented = fmt.Errorf("chế độ khởi động chưa được hỗ trợ")
 
 // PrepareContinueFromNovel 是“根据已有小说续写”的统一预留落点。
 // TUI/headless 未来都应先把输入整理到 Request，再从这里产出可进入 Engine 的 Plan。

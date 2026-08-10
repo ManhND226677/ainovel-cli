@@ -134,6 +134,9 @@ func loadJSONFile(path string) (Config, error) {
 
 // mergeConfig 将 overlay 合并到 base 上。非零值字段覆盖，map 按 key 合并。
 func mergeConfig(base, overlay Config) Config {
+	if overlay.Language != "" {
+		base.Language = overlay.Language
+	}
 	if overlay.Provider != "" {
 		base.Provider = overlay.Provider
 	}

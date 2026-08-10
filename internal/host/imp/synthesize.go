@@ -1,4 +1,4 @@
-package imp
+﻿package imp
 
 import (
 	"context"
@@ -152,10 +152,10 @@ func Synthesize(ctx context.Context, m callModel, bookPrompt, rangePrompt string
 			return validateRangeDigest(d, startCh, endCh, "range digest")
 		})
 		if err != nil {
-			return nil, fmt.Errorf("range %d-%d 综合：%w", startCh, endCh, err)
+			return nil, fmt.Errorf("range %d-%d synthesis: %w", startCh, endCh, err)
 		}
 		if err := writeArtifact(w, rel, want, rd); err != nil {
-			return nil, fmt.Errorf("落盘 range digest：%w", err)
+			return nil, fmt.Errorf("save range digest: %w", err)
 		}
 		digests = append(digests, rd)
 	}
@@ -196,7 +196,7 @@ func reduceToFit(ctx context.Context, m callModel, rangePrompt string, digests [
 				return validateRangeDigest(d, startCh, endCh, "合并区间")
 			})
 			if err != nil {
-				return nil, fmt.Errorf("合并区间 %d-%d：%w", startCh, endCh, err)
+				return nil, fmt.Errorf("merge range %d-%d: %w", startCh, endCh, err)
 			}
 			merged = append(merged, rd)
 		}
@@ -207,10 +207,10 @@ func reduceToFit(ctx context.Context, m callModel, rangePrompt string, digests [
 
 func validateRangeDigest(d *RangeDigest, startChapter, endChapter int, label string) error {
 	if strings.TrimSpace(d.Plot) == "" {
-		return fmt.Errorf("%s plot 为空", label)
+		return fmt.Errorf("%s plot is empty", label)
 	}
 	if d.StartChapter != startChapter || d.EndChapter != endChapter {
-		return fmt.Errorf("%s 章范围 %d-%d 与请求 %d-%d 不符", label, d.StartChapter, d.EndChapter, startChapter, endChapter)
+		return fmt.Errorf("%s chapter range %d-%d mismatches request %d-%d", label, d.StartChapter, d.EndChapter, startChapter, endChapter)
 	}
 	return nil
 }
@@ -277,21 +277,21 @@ func buildBookPayload(inner string, n int) string {
 // validateSynthesis 校验综合结果的结构约束（值域/闭集/范围），不复判文学质量。
 func validateSynthesis(s *BookSynthesis, n int) error {
 	if strings.TrimSpace(s.Premise) == "" {
-		return fmt.Errorf("premise 为空")
+		return fmt.Errorf("premise is empty")
 	}
 	if len(s.Characters) == 0 {
-		return fmt.Errorf("characters 为空")
+		return fmt.Errorf("characters is empty")
 	}
 	if !validPlanningTiers[s.PlanningTier] {
-		return fmt.Errorf("planning_tier 非法：%q", s.PlanningTier)
+		return fmt.Errorf("planning_tier invalid: %q", s.PlanningTier)
 	}
 	switch s.StoryStatus {
 	case storyOpen, storyClosed, storyUncertain:
 	default:
-		return fmt.Errorf("story_status 非法：%q", s.StoryStatus)
+		return fmt.Errorf("story_status invalid: %q", s.StoryStatus)
 	}
 	if strings.TrimSpace(s.Compass.EndingDirection) == "" {
-		return fmt.Errorf("compass.ending_direction 为空")
+		return fmt.Errorf("compass.ending_direction is empty")
 	}
 	return validateStructure(s.Structure, n)
 }
@@ -299,25 +299,25 @@ func validateSynthesis(s *BookSynthesis, n int) error {
 // validateStructure 校验卷弧范围连续、无重叠、完整覆盖 1..N（RFC §11 / 不变量 5）。
 func validateStructure(structure []ImportedVolumeRange, n int) error {
 	if len(structure) == 0 {
-		return fmt.Errorf("structure 为空")
+		return fmt.Errorf("structure is empty")
 	}
 	next := 1
 	for vi, v := range structure {
 		if len(v.Arcs) == 0 {
-			return fmt.Errorf("卷[%d] %q 无弧", vi, v.Title)
+			return fmt.Errorf("volume[%d] %q has no arcs", vi, v.Title)
 		}
 		for ai, a := range v.Arcs {
 			if a.StartChapter != next {
-				return fmt.Errorf("卷[%d]弧[%d] 起点 %d 应为 %d（须连续无缺口）", vi, ai, a.StartChapter, next)
+				return fmt.Errorf("volume[%d] arc[%d] start %d should be %d (must be contiguous without gaps)", vi, ai, a.StartChapter, next)
 			}
 			if a.EndChapter < a.StartChapter {
-				return fmt.Errorf("卷[%d]弧[%d] 范围倒置 %d..%d", vi, ai, a.StartChapter, a.EndChapter)
+				return fmt.Errorf("volume[%d] arc[%d] inverted range %d..%d", vi, ai, a.StartChapter, a.EndChapter)
 			}
 			next = a.EndChapter + 1
 		}
 	}
 	if next-1 != n {
-		return fmt.Errorf("卷弧范围覆盖 %d 章，应为 %d 章", next-1, n)
+		return fmt.Errorf("volume/arc range covers %d chapters, should be %d", next-1, n)
 	}
 	return nil
 }
@@ -367,7 +367,7 @@ func AssembleFoundation(s *BookSynthesis, facts []ImportedChapterFacts, closed b
 			for ch := a.StartChapter; ch <= a.EndChapter; ch++ {
 				f, ok := byChapter[ch]
 				if !ok {
-					return nil, fmt.Errorf("弧范围引用不存在的章 %d", ch)
+					return nil, fmt.Errorf("arc range references non-existent chapter %d", ch)
 				}
 				arc.Chapters = append(arc.Chapters, domain.OutlineEntry{
 					Chapter: ch, Title: f.Title, CoreEvent: f.CoreEvent, Hook: f.Hook, Scenes: f.Scenes,
@@ -384,11 +384,11 @@ func AssembleFoundation(s *BookSynthesis, facts []ImportedChapterFacts, closed b
 	// FlattenOutline 后章数为 N，且标题与逐章事实一致（RFC §11.5）。
 	flat := domain.FlattenOutline(volumes)
 	if len(flat) != n {
-		return nil, fmt.Errorf("FlattenOutline 章数 %d != %d", len(flat), n)
+		return nil, fmt.Errorf("FlattenOutline chapter count %d != %d", len(flat), n)
 	}
 	for _, e := range flat {
 		if e.Title != byChapter[e.Chapter].Title {
-			return nil, fmt.Errorf("章 %d 标题与逐章事实不一致", e.Chapter)
+			return nil, fmt.Errorf("chapter %d title inconsistent with chapter facts", e.Chapter)
 		}
 	}
 

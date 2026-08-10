@@ -36,21 +36,21 @@ type FailureDecision struct {
 
 func (d *FailureDecision) ValidateAgainst(f FailureFacts) error {
 	if strings.TrimSpace(d.Reason) == "" {
-		return fmt.Errorf("reason 不能为空")
+		return fmt.Errorf("reason không được để trống")
 	}
 	switch d.Action {
 	case "retry", "abort":
 		return nil
 	case "reroute":
 		if d.Dispatch == nil {
-			return fmt.Errorf("reroute 必须附 dispatch")
+			return fmt.Errorf("reroute phải kèm theo dispatch")
 		}
 		if err := d.Dispatch.validate(); err != nil {
 			return err
 		}
 		return validateDispatchAgainst(d.Dispatch, f.Phase)
 	default:
-		return fmt.Errorf("action 非法: %q（可选 retry / reroute / abort）", d.Action)
+		return fmt.Errorf("action không hợp lệ: %q (có thể chọn retry / reroute / abort)", d.Action)
 	}
 }
 
@@ -58,11 +58,11 @@ func (d *FailureDecision) ValidateAgainst(f FailureFacts) error {
 // (仅 reroute 时非 null);跨字段组合仍由 ValidateAgainst 按事实校验。
 var failureContract = llmcontract.Contract{
 	Name:        "arbiter_failure",
-	Description: "失败/僵局裁定:给出出路",
+	Description: "Phán quyết thất bại/bế tắc: đưa ra hướng giải quyết",
 	Schema: schema.Object(
-		schema.Property("action", schema.Enum("出路", "retry", "reroute", "abort")).Required(),
-		schema.Property("dispatch", dispatchSchema("派单目标(仅 reroute 时给出,否则为 null)")).Required(),
-		schema.Property("reason", schema.String("裁定理由")).Required(),
+		schema.Property("action", schema.Enum("Hướng giải quyết", "retry", "reroute", "abort")).Required(),
+		schema.Property("dispatch", dispatchSchema("Mục tiêu phái cử (chỉ có khi reroute, nếu không sẽ là null)")).Required(),
+		schema.Property("reason", schema.String("Lý do phán quyết")).Required(),
 	),
 }
 

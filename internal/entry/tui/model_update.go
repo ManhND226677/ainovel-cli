@@ -120,7 +120,7 @@ func (m Model) toggleMouseReporting() (Model, tea.Cmd) {
 }
 
 // donePlaceholder 完成态输入框提示：会话内完结（doneMsg）与重启进完结书（bootstrap）共用。
-const donePlaceholder = "创作已完成 · 可输入返工要求(如\"重写第3章\")、/reopen 续写新卷、/export 导出"
+const donePlaceholder = "创作已Hoàn thành · 可输入Viết lại要求(如\"重写第3章\")、/reopen 续写新卷、/export 导出"
 
 // enterRunning 进入创作工作台：开启鼠标上报（工作台需要点击切面板 / 滚轮 /
 // 拖拽侧边栏）。返回的命令需由调用方 Batch 进最终返回值。
@@ -482,13 +482,13 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			m.snapshot.RuntimeState = "paused"
 			m.syncRuntimePlaceholder()
 		} else {
-			m.textarea.Placeholder = "运行中断，输入任意内容恢复创作"
+			m.textarea.Placeholder = "Đang chạy断，输入任意内容恢复创作"
 		}
 		return m, tea.Batch(fetchSnapshot(m.runtime), listenDone(m.runtime)), true
 	case abortResultMsg:
 		if msg.stopped {
 			m.abortPending = true
-			m.textarea.Placeholder = "正在暂停创作..."
+			m.textarea.Placeholder = "正在Tạm dừng创作..."
 		}
 		return m, nil, true
 	case reportLoadedMsg:

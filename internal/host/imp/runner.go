@@ -1,4 +1,4 @@
-package imp
+﻿package imp
 
 import (
 	"context"
@@ -154,7 +154,7 @@ func budgetsFromDeps(d Deps) RunBudgets {
 func Run(ctx context.Context, deps Deps, opts Options) (<-chan Event, error) {
 	if deps.Store == nil || deps.CommitChapter == nil ||
 		deps.Segment.Model == nil || deps.Analyze.Model == nil || deps.Synthesize.Model == nil {
-		return nil, fmt.Errorf("deps 不完整")
+		return nil, fmt.Errorf("deps incomplete")
 	}
 	if deps.Budgets == (RunBudgets{}) {
 		deps.Budgets = budgetsFromDeps(deps)
@@ -320,10 +320,10 @@ func (r *runner) checkSourceIdentity() error {
 	}
 	raw, err := os.ReadFile(r.opts.SourcePath)
 	if err != nil {
-		return fmt.Errorf("读取源文件 %s：%w", r.opts.SourcePath, err)
+		return fmt.Errorf("read source file %s: %w", r.opts.SourcePath, err)
 	}
 	if Digest(raw) != m.RawSHA256 {
-		return fmt.Errorf("已有 %q 的导入在进行中，本次源文件与其内容不同：请先完成或放弃旧导入（删除 meta/import/）再导入新书", m.SourceName)
+		return fmt.Errorf("import of %q already in progress, current source file content differs: please complete or abandon old import (delete meta/import/) before importing new book", m.SourceName)
 	}
 	return nil
 }
@@ -349,7 +349,7 @@ func (r *runner) run(ctx context.Context) {
 			return
 		}
 		if previous != nil && facts == *previous {
-			r.fail("导入停滞", fmt.Errorf("动作执行后事实没有变化，下一动作仍为 %q", NextAction(facts)))
+			r.fail("导入停滞", fmt.Errorf("facts unchanged after action, next action is still %q", NextAction(facts)))
 			return
 		}
 		snapshot := facts
@@ -380,7 +380,7 @@ func (r *runner) run(ctx context.Context) {
 			r.emit(StageDone, 0, 0, "导入完成，等待验收后续写", nil)
 			return
 		default:
-			err = fmt.Errorf("未知动作 %q", act)
+			err = fmt.Errorf("unknown action %q", act)
 		}
 		if err != nil {
 			r.fail("导入失败", err)
@@ -394,13 +394,13 @@ func (r *runner) ingest(ctx context.Context) error {
 	// createWorkspace 会以「已存在（无参数 /import 可恢复）」拒绝，无参数重跑又因
 	// WorkspaceReady=false 回到这里要求源路径——两条提示互相打架，用户无路可走。
 	if r.ws.Active() {
-		return fmt.Errorf("meta/import/ 已存在但工作区身份不可用（manifest/source/intent 缺失或损坏），请人工确认后删除该目录再重新导入")
+		return fmt.Errorf("meta/import/ exists but workspace identity is unavailable (manifest/source/intent missing or corrupted), manually confirm and delete directory before re-importing")
 	}
 	if err := checkImportPreconditions(r.deps.Store); err != nil {
 		return err
 	}
 	if r.opts.SourcePath == "" {
-		return fmt.Errorf("新导入需要源文件路径")
+		return fmt.Errorf("new import requires source file path")
 	}
 	r.emit(StageIngesting, 0, 0, "读取、解码、归一化并快照源文件...", nil)
 	_, m, err := Ingest(r.deps.Store.Dir(), r.opts.SourcePath, r.opts.intent())
@@ -419,7 +419,7 @@ func (r *runner) segment(ctx context.Context) error {
 	units := buildSourceUnits(src, r.deps.Budgets.MaxUnitBytes)
 	guidance, err := r.ws.LoadGuidance()
 	if err != nil {
-		return fmt.Errorf("读取切分指导: %w", err)
+		return fmt.Errorf("read segmentation guide: %w", err)
 	}
 	r.emit(StageSegmenting, 0, 0, fmt.Sprintf("语义识别章节边界（%d 个坐标单元）...", len(units)), nil)
 	digest := segmentInputDigest(Digest(src), guidance, segmentPromptVersion)
@@ -572,7 +572,7 @@ func (r *runner) synthesize(ctx context.Context) error {
 	total := len(segArt.Payload.Chapters)
 	facts := loadPriorFacts(r.ws, total)
 	if len(facts) != total {
-		return fmt.Errorf("逐章分析不完整：%d/%d", len(facts), total)
+		return fmt.Errorf("chapter analysis incomplete: %d/%d", len(facts), total)
 	}
 	r.emit(StageSynthesizing, 0, total, "分层归纳全书语义...", nil)
 	syn, err := Synthesize(ctx, r.deps.Synthesize.Model, r.deps.Prompts.Synthesize, r.deps.Prompts.Range, r.ws, facts,
@@ -604,7 +604,7 @@ func (r *runner) publish(ctx context.Context) error {
 	total := len(seg.Chapters)
 	facts := loadPriorFacts(r.ws, total)
 	if len(facts) != total {
-		return fmt.Errorf("发布前分析不完整：%d/%d", len(facts), total)
+		return fmt.Errorf("pre-publish analysis incomplete: %d/%d", len(facts), total)
 	}
 	closed, err := r.resolveStory(&synArt.Payload)
 	if err != nil {
@@ -629,7 +629,7 @@ func (r *runner) publish(ctx context.Context) error {
 	// 置于 publishFoundation（已初始化 RunMeta）之后、章节提交之前，彻底关闭该窗口；重跑发布时幂等
 	// 重设（--continue 不设 Hold，交由自动接力，RFC §12.4）。
 	if err := r.setCompletionHold(); err != nil {
-		return fmt.Errorf("建立导入完成 Hold：%w", err)
+		return fmt.Errorf("create import completion Hold: %w", err)
 	}
 	for i, c := range seg.Chapters {
 		if ctx.Err() != nil {
@@ -651,17 +651,17 @@ func (r *runner) storyChoice() (string, error) {
 		if art, aerr := readArtifact[StoryResolution](r.ws, fileStoryResolve); aerr == nil && art.InputDigest == Digest(raw) {
 			return art.Payload.Choice, nil
 		} else if aerr != nil && !os.IsNotExist(aerr) {
-			return "", fmt.Errorf("读取故事状态裁定: %w", aerr)
+			return "", fmt.Errorf("read story status judgment: %w", aerr)
 		}
 	} else {
-		return "", fmt.Errorf("读取综合工件: %w", err)
+		return "", fmt.Errorf("read synthesis artifact: %w", err)
 	}
 	if r.opts.StoryResolution != "" {
 		return r.opts.StoryResolution, nil
 	}
 	in, err := r.ws.LoadIntent()
 	if err != nil {
-		return "", fmt.Errorf("读取导入意图: %w", err)
+		return "", fmt.Errorf("read import intent: %w", err)
 	}
 	return in.StoryResolution, nil
 }
@@ -708,10 +708,10 @@ func (r *runner) resolveStory(syn *BookSynthesis) (bool, error) {
 		case storyOpen:
 			return false, nil
 		default:
-			return false, fmt.Errorf("故事状态 uncertain，需 --story=open|closed")
+			return false, fmt.Errorf("story_status uncertain, requires --story=open|closed")
 		}
 	default:
-		return false, fmt.Errorf("未知 story_status：%q", syn.StoryStatus)
+		return false, fmt.Errorf("unknown story_status: %q", syn.StoryStatus)
 	}
 }
 
@@ -720,7 +720,7 @@ func (r *runner) resolveStory(syn *BookSynthesis) (bool, error) {
 func (r *runner) setCompletionHold() error {
 	in, err := r.ws.LoadIntent()
 	if err != nil {
-		return fmt.Errorf("读取导入意图: %w", err)
+		return fmt.Errorf("read import intent: %w", err)
 	}
 	if r.opts.ContinueAfter || (in != nil && in.ContinueAfterImport) {
 		return nil

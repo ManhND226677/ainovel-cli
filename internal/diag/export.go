@@ -40,34 +40,34 @@ func RenderExport(rep Report, rc RuntimeCapture) []byte {
 	st := rep.Stats
 
 	b.WriteString("# diag-export\n\n")
-	fmt.Fprintf(&b, "> 生成时间 %s · %s/%s\n", time.Now().Format("2006-01-02 15:04:05"), rc.GoOS, rc.GoArch)
-	b.WriteString("> ⚠️ 已脱敏：小说正文 / prompt / 思考已移除，仅保留行为骨架。可直接贴到 issue。\n\n")
+	fmt.Fprintf(&b, "> Thời gian tạo %s · %s/%s\n", time.Now().Format("2006-01-02 15:04:05"), rc.GoOS, rc.GoArch)
+	b.WriteString("> ⚠️ Đã ẩn danh: Nội dung chính/lệnh (prompt)/quá trình suy nghĩ đã bị loại bỏ, chỉ giữ lại khung hành vi. Có thể gửi trực tiếp vào issue.\n\n")
 
 	// 1. 环境
-	b.WriteString("## 1. 环境\n\n")
-	fmt.Fprintf(&b, "- 阶段 `%s`", orDash(st.Phase))
+	b.WriteString("## 1. Môi trường\n\n")
+	fmt.Fprintf(&b, "- Giai đoạn `%s`", orDash(st.Phase))
 	if st.Flow != "" {
-		fmt.Fprintf(&b, " / flow `%s`", st.Flow)
+		fmt.Fprintf(&b, " / luồng `%s`", st.Flow)
 	}
-	fmt.Fprintf(&b, " · 章节 %d/%d · 字数 %d\n", st.CompletedChapters, st.TotalChapters, st.TotalWords)
+	fmt.Fprintf(&b, " · Chương %d/%d · Số từ %d\n", st.CompletedChapters, st.TotalChapters, st.TotalWords)
 	if st.PlanningTier != "" {
-		fmt.Fprintf(&b, "- 规划 `%s`\n", st.PlanningTier)
+		fmt.Fprintf(&b, "- Kế hoạch `%s`\n", st.PlanningTier)
 	}
 	for _, m := range rc.Models {
 		fmt.Fprintf(&b, "- %s → `%s` / `%s`\n", m.Agent, orDash(m.Provider), orDash(m.Model))
 	}
 
 	// 2. 诊断发现（仅运行时；创作类诊断含剧情/伏笔，留在 /diag 屏上报告，不进可分享导出）
-	b.WriteString("\n## 2. 诊断发现（运行时）\n\n")
+	b.WriteString("\n## 2. Phát hiện chẩn đoán (Lúc chạy)\n\n")
 	rf := runtimeFindings(&rc)
 	sortFindings(rf)
 	if len(rf) == 0 {
-		b.WriteString("未发现运行时异常。\n")
+		b.WriteString("Không có cảnh báo khi chạy.\n")
 	} else {
 		for _, f := range rf {
 			fmt.Fprintf(&b, "- [%s] %s\n", f.Severity, f.Title)
 			if f.Evidence != "" {
-				fmt.Fprintf(&b, "  - 证据：%s\n", f.Evidence)
+				fmt.Fprintf(&b, "  - Dấu vết: %s\n", f.Evidence)
 			}
 			if f.Suggestion != "" {
 				fmt.Fprintf(&b, "  - → %s\n", f.Suggestion)
@@ -76,52 +76,52 @@ func RenderExport(rep Report, rc RuntimeCapture) []byte {
 	}
 
 	// 3. 运行时信号（原始聚合）
-	b.WriteString("\n## 3. 运行时信号\n\n")
+	b.WriteString("\n## 3. Tín hiệu thời gian chạy\n\n")
 	wrote := false
 	if rc.CurrentStep != "" {
-		fmt.Fprintf(&b, "- 当前 step `%s`\n", rc.CurrentStep)
+		fmt.Fprintf(&b, "- Bước hiện tại `%s`\n", rc.CurrentStep)
 		wrote = true
 	}
 	if rc.StuckStep != "" {
-		fmt.Fprintf(&b, "- ⚠️ 卡住：连续停在 `%s` ×%d\n", rc.StuckStep, rc.StuckCount)
+		fmt.Fprintf(&b, "- ⚠️ Bị kẹt: liên tục kẹt ở `%s` ×%d\n", rc.StuckStep, rc.StuckCount)
 		wrote = true
 	}
 	if len(rc.Repeats) > 0 {
-		b.WriteString("- 高频签名（近端窗口 ≥3 次，含正常重复工具，仅供参考）：\n")
+		b.WriteString("- Chữ ký tần số cao (cửa sổ gần ≥3 lần, bao gồm công cụ lặp lại bình thường, chỉ mang tính chất tham khảo):\n")
 		for _, r := range rc.Repeats {
 			fmt.Fprintf(&b, "  - `%s` ×%d\n", r.Sig, r.Count)
 		}
 		wrote = true
 	}
 	if len(rc.DupContent) > 0 {
-		b.WriteString("- 反复生成同段文本（同 sha）：\n")
+		b.WriteString("- Tạo nội dung trùng lặp lặp đi lặp lại (cùng một sha):\n")
 		for _, d := range rc.DupContent {
 			fmt.Fprintf(&b, "  - sha=%s ×%d\n", d.Sha, d.Count)
 		}
 		wrote = true
 	}
 	if len(rc.LogKinds) > 0 {
-		b.WriteString("- 日志错误分类：")
+		b.WriteString("- Phân loại lỗi nhật ký: ")
 		b.WriteString(joinKinds(rc.LogKinds))
 		b.WriteString("\n")
 		wrote = true
 	}
 	if rc.LogErrors > 0 || rc.LogWarns > 0 {
-		fmt.Fprintf(&b, "- 日志 error ×%d · warn ×%d\n", rc.LogErrors, rc.LogWarns)
+		fmt.Fprintf(&b, "- Nhật ký lỗi (error) ×%d · cảnh báo (warn) ×%d\n", rc.LogErrors, rc.LogWarns)
 		wrote = true
 	}
 	if rc.StopGuard > 0 {
-		fmt.Fprintf(&b, "- StopGuard 拦截 ×%d\n", rc.StopGuard)
+		fmt.Fprintf(&b, "- StopGuard đánh chặn ×%d\n", rc.StopGuard)
 		wrote = true
 	}
 	if !wrote {
-		b.WriteString("- 无明显运行时异常信号。\n")
+		b.WriteString("- Không có tín hiệu bất thường rõ ràng khi chạy.\n")
 	}
 
 	// 4. 行为骨架尾巴
-	fmt.Fprintf(&b, "\n## 4. 行为骨架尾巴（末 %d 条）\n\n", len(rc.Tail))
+	fmt.Fprintf(&b, "\n## 4. Phần đuôi khung hành vi (Cuối %d dòng)\n\n", len(rc.Tail))
 	if len(rc.Tail) == 0 {
-		b.WriteString("（无会话记录）\n")
+		b.WriteString("(Không có lịch sử phiên)\n")
 	} else {
 		b.WriteString("```\n")
 		for _, ev := range rc.Tail {
@@ -132,10 +132,10 @@ func RenderExport(rep Report, rc RuntimeCapture) []byte {
 	}
 
 	// 5. 脱敏自检
-	b.WriteString("\n## 5. 脱敏自检\n\n")
-	fmt.Fprintf(&b, "- 打码文本块 %d 处 · 正文出包 0 处\n", rc.RedactedTexts)
+	b.WriteString("\n## 5. Tự kiểm tra che giấu dữ liệu\n\n")
+	fmt.Fprintf(&b, "- %d khối văn bản bị ẩn danh · 0 phần văn bản tiểu thuyết bị lộ\n", rc.RedactedTexts)
 	if len(rc.Sources) > 0 {
-		fmt.Fprintf(&b, "- 数据源：%s\n", strings.Join(rc.Sources, " · "))
+		fmt.Fprintf(&b, "- Nguồn dữ liệu: %s\n", strings.Join(rc.Sources, " · "))
 	}
 
 	return []byte(b.String())
@@ -149,7 +149,7 @@ func formatSkel(ev SkelEvent) string {
 		parts = append(parts, t.Name+formatArgs(t.Args)+invalidTag(t))
 	}
 	if ev.ErrClass != "" {
-		parts = append(parts, "err: "+ev.ErrClass)
+		parts = append(parts, "lỗi: "+ev.ErrClass)
 	}
 	if len(ev.Tools) == 0 && ev.ErrClass == "" && ev.TextSha != "" {
 		parts = append(parts, "text<sha="+ev.TextSha+">")
@@ -178,9 +178,9 @@ func invalidTag(t SkelTool) string {
 		return ""
 	}
 	if t.ParseErr != "" {
-		return " ⚠️args-invalid(" + firstLine(t.ParseErr, 80) + ")"
+		return " ⚠️tham số không hợp lệ(" + firstLine(t.ParseErr, 80) + ")"
 	}
-	return " ⚠️args-invalid"
+	return " ⚠️tham số không hợp lệ"
 }
 
 func joinKinds(m map[string]int) string {

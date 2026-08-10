@@ -1,4 +1,4 @@
-package exp
+﻿package exp
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// newTestStore 构造一个 t.TempDir() 之上的最小 store，已写入 1..n 章终稿与 progress。
+// newTestStore æž„é€ ä¸€ä¸ª t.TempDir() ä¹‹ä¸Šçš„æœ€å° storeï¼Œå·²å†™å…¥ 1..n ç« ç»ˆç¨¿ä¸Ž progressã€‚
 func newTestStore(t *testing.T, novelName string, completed []int) (*store.Store, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -27,7 +27,7 @@ func newTestStore(t *testing.T, novelName string, completed []int) (*store.Store
 		t.Fatalf("phase writing: %v", err)
 	}
 	for _, ch := range completed {
-		if err := s.Drafts.SaveFinalChapter(ch, fmt.Sprintf("正文 ch %d。", ch)); err != nil {
+		if err := s.Drafts.SaveFinalChapter(ch, fmt.Sprintf("æ­£æ–‡ ch %dã€‚", ch)); err != nil {
 			t.Fatalf("save chapter %d: %v", ch, err)
 		}
 		if err := s.Progress.StartChapter(ch); err != nil {
@@ -41,14 +41,14 @@ func newTestStore(t *testing.T, novelName string, completed []int) (*store.Store
 }
 
 func TestRun_HappyPath_DefaultsToNovelDir(t *testing.T) {
-	s, dir := newTestStore(t, "光斑", []int{1, 2, 3})
-	if err := s.Outline.SavePremise("光与影的故事。"); err != nil {
+	s, dir := newTestStore(t, "å…‰æ–‘", []int{1, 2, 3})
+	if err := s.Outline.SavePremise("å…‰ä¸Žå½±çš„æ•…äº‹ã€‚"); err != nil {
 		t.Fatalf("save premise: %v", err)
 	}
 	if err := s.Outline.SaveOutline([]domain.OutlineEntry{
-		{Chapter: 1, Title: "雨夜归人"},
-		{Chapter: 2, Title: "破晓"},
-		{Chapter: 3, Title: "余烬"},
+		{Chapter: 1, Title: "é›¨å¤œå½’äºº"},
+		{Chapter: 2, Title: "ç ´æ™“"},
+		{Chapter: 3, Title: "ä½™çƒ¬"},
 	}); err != nil {
 		t.Fatalf("save outline: %v", err)
 	}
@@ -60,32 +60,32 @@ func TestRun_HappyPath_DefaultsToNovelDir(t *testing.T) {
 	if res.Chapters != 3 {
 		t.Errorf("Chapters = %d, want 3", res.Chapters)
 	}
-	if res.Path != filepath.Join(dir, "光斑.txt") {
-		t.Errorf("Path = %q, want default {dir}/光斑.txt", res.Path)
+	if res.Path != filepath.Join(dir, "å…‰æ–‘.txt") {
+		t.Errorf("Path = %q, want default {dir}/å…‰æ–‘.txt", res.Path)
 	}
 	data, err := os.ReadFile(res.Path)
 	if err != nil {
 		t.Fatalf("read output: %v", err)
 	}
 	text := string(data)
-	for _, want := range []string{"《光斑》", "第 1 章  雨夜归人", "第 3 章  余烬"} {
+	for _, want := range []string{"《å…‰æ–‘》", "第 1 章  é›¨å¤œå½’äºº", "第 3 章  ä½™çƒ¬"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("output missing %q\nfull:\n%s", want, text)
 		}
 	}
-	// premise 不进导出（创作蓝图，非读者内容）
-	if strings.Contains(text, "光与影的故事。") {
+	// premise ä¸è¿›å¯¼å‡ºï¼ˆåˆ›ä½œè“å›¾ï¼Œéžè¯»è€…å†…å®¹ï¼‰
+	if strings.Contains(text, "å…‰ä¸Žå½±çš„æ•…äº‹ã€‚") {
 		t.Errorf("premise must not appear in export:\n%s", text)
 	}
 }
 
 func TestRun_UsesCommittedTitleForCompletedChapter(t *testing.T) {
-	s, _ := newTestStore(t, "光斑", []int{1})
-	if err := s.Outline.SaveOutline([]domain.OutlineEntry{{Chapter: 1, Title: "计划标题"}}); err != nil {
+	s, _ := newTestStore(t, "å…‰æ–‘", []int{1})
+	if err := s.Outline.SaveOutline([]domain.OutlineEntry{{Chapter: 1, Title: "è®¡åˆ’æ ‡é¢˜"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Summaries.SaveSummary(domain.ChapterSummary{
-		Chapter: 1, Title: "终稿标题", Summary: "摘要",
+		Chapter: 1, Title: "ç»ˆç¨¿æ ‡é¢˜", Summary: "æ‘˜è¦",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -99,15 +99,15 @@ func TestRun_UsesCommittedTitleForCompletedChapter(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "第 1 章  终稿标题") || strings.Contains(text, "计划标题") {
+	if !strings.Contains(text, "第 1 章  ç»ˆç¨¿æ ‡é¢˜") || strings.Contains(text, "è®¡åˆ’æ ‡é¢˜") {
 		t.Fatalf("export title projection is wrong:\n%s", text)
 	}
 }
 
-// TestRun_PremiseNotExported 端到端钉死：premise.md 存在也不进导出，书名保留（issue #27）。
+// TestRun_PremiseNotExported ç«¯åˆ°ç«¯é’‰æ­»ï¼špremise.md å­˜åœ¨ä¹Ÿä¸è¿›å¯¼å‡ºï¼Œä¹¦åä¿ç•™ï¼ˆissue #27ï¼‰ã€‚
 func TestRun_PremiseNotExported(t *testing.T) {
-	s, _ := newTestStore(t, "光斑", []int{1})
-	if err := s.Outline.SavePremise("# 光斑\n## 目标读者\n不该出现的创作蓝图。"); err != nil {
+	s, _ := newTestStore(t, "å…‰æ–‘", []int{1})
+	if err := s.Outline.SavePremise("# å…‰æ–‘\n## ç›®æ ‡è¯»è€…\nä¸è¯¥å‡ºçŽ°çš„åˆ›ä½œè“å›¾ã€‚"); err != nil {
 		t.Fatalf("save premise: %v", err)
 	}
 	res, err := Run(context.Background(), Deps{Store: s}, Options{})
@@ -119,10 +119,10 @@ func TestRun_PremiseNotExported(t *testing.T) {
 		t.Fatalf("read output: %v", err)
 	}
 	text := string(data)
-	if strings.Contains(text, "不该出现的创作蓝图。") || strings.Contains(text, "目标读者") {
+	if strings.Contains(text, "ä¸è¯¥å‡ºçŽ°çš„åˆ›ä½œè“å›¾ã€‚") || strings.Contains(text, "ç›®æ ‡è¯»è€…") {
 		t.Errorf("premise must not be exported, got:\n%s", text)
 	}
-	if !strings.Contains(text, "《光斑》") {
+	if !strings.Contains(text, "《å…‰æ–‘》") {
 		t.Errorf("book title should remain: %s", text)
 	}
 }
@@ -145,11 +145,11 @@ func TestRun_ExistingFile_NoOverwrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("expect error when target exists and !Overwrite")
 	}
-	if !strings.Contains(err.Error(), "已存在") {
+	if !strings.Contains(err.Error(), "file already exists") && !strings.Contains(err.Error(), "T?p dã t?n t?i") {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	// 加 Overwrite 应成功
+	// åŠ  Overwrite åº”æˆåŠŸ
 	res, err := Run(context.Background(), Deps{Store: s}, Options{OutPath: target, Overwrite: true})
 	if err != nil {
 		t.Fatalf("Overwrite Run: %v", err)
@@ -217,7 +217,7 @@ func TestInferFormat(t *testing.T) {
 		{"book.epub", FormatEPUB, false},
 		{"book.EPUB", FormatEPUB, false},
 		{"/abs/path/x.epub", FormatEPUB, false},
-		{"book", FormatTXT, false}, // 无后缀按 TXT
+		{"book", FormatTXT, false}, // æ— åŽç¼€æŒ‰ TXT
 		{"book.dat", "", true},
 		{"book.pdf", "", true},
 	}
@@ -240,11 +240,11 @@ func TestInferFormat(t *testing.T) {
 }
 
 func TestRun_EPUB_FromExtension(t *testing.T) {
-	s, dir := newTestStore(t, "光斑", []int{1})
-	if err := s.Outline.SavePremise("光与影。"); err != nil {
+	s, dir := newTestStore(t, "å…‰æ–‘", []int{1})
+	if err := s.Outline.SavePremise("å…‰ä¸Žå½±ã€‚"); err != nil {
 		t.Fatalf("save premise: %v", err)
 	}
-	if err := s.Outline.SaveOutline([]domain.OutlineEntry{{Chapter: 1, Title: "雨夜"}}); err != nil {
+	if err := s.Outline.SaveOutline([]domain.OutlineEntry{{Chapter: 1, Title: "é›¨å¤œ"}}); err != nil {
 		t.Fatalf("save outline: %v", err)
 	}
 
@@ -260,19 +260,19 @@ func TestRun_EPUB_FromExtension(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	// EPUB 是 zip，前 4 字节 PK 头
+	// EPUB æ˜¯ zipï¼Œå‰ 4 å­—èŠ‚ PK å¤´
 	if len(data) < 4 || string(data[:2]) != "PK" {
 		t.Errorf("output does not look like a zip: %x", data[:min(8, len(data))])
 	}
 }
 
 func TestRun_DefaultPathFollowsFormat(t *testing.T) {
-	s, dir := newTestStore(t, "光斑", []int{1})
+	s, dir := newTestStore(t, "å…‰æ–‘", []int{1})
 	res, err := Run(context.Background(), Deps{Store: s}, Options{Format: FormatEPUB})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	want := filepath.Join(dir, "光斑.epub")
+	want := filepath.Join(dir, "å…‰æ–‘.epub")
 	if res.Path != want {
 		t.Errorf("Path = %q want %q", res.Path, want)
 	}
@@ -284,7 +284,7 @@ func TestRun_UnknownExtension(t *testing.T) {
 	if err == nil {
 		t.Fatal("expect error for unknown extension")
 	}
-	if !strings.Contains(err.Error(), "扩展名") {
+	if !strings.Contains(err.Error(), "无法从扩展名") && !strings.Contains(err.Error(), "Không thể suy ra định dạng") {
 		t.Errorf("error should mention extension: %v", err)
 	}
 }
@@ -304,3 +304,5 @@ func TestSanitizeFileName(t *testing.T) {
 		}
 	}
 }
+
+
