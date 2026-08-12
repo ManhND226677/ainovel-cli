@@ -57,9 +57,12 @@ type Host struct {
 	logCleanup      func()
 	fileLogErr      error
 
-	events   chan Event
-	streamCh chan string
-	done     chan struct{}
+	events          chan Event
+	streamCh        chan string
+	done            chan struct{}
+	eventSubMu      sync.Mutex
+	eventSubs       map[chan Event]struct{}
+	eventSubsClosed bool
 
 	mu         sync.Mutex
 	lifecycle  lifecycle
@@ -206,6 +209,7 @@ func New(cfg bootstrap.Config, bundle assets.Bundle, options ...NewOption) (*Hos
 		events:          make(chan Event, 100),
 		streamCh:        make(chan string, 256),
 		done:            make(chan struct{}, 4),
+		eventSubs:       make(map[chan Event]struct{}),
 		lifecycle:       lifecycleIdle,
 	}
 	h.runCtx, h.runCancel = context.WithCancel(context.Background())
@@ -945,6 +949,7 @@ func (h *Host) Close() {
 			slog.Warn("usage 退出前落盘失败", "module", "usage", "err", err)
 		}
 		h.closeOutputChannels()
+		h.closeEventSubscribers()
 		if err := h.bookLease.Close(); err != nil {
 			slog.Error("释放小说目录占用失败", "module", "host", "dir", h.cfg.OutputDir, "err", err)
 		}
@@ -1043,6 +1048,33 @@ func (h *Host) Stream() <-chan string { return h.streamCh }
 func (h *Host) Done() <-chan struct{} { return h.done }
 func (h *Host) Dir() string           { return h.store.Dir() }
 
+// SubscribeEvents returns a lossy fan-out stream for observers such as the
+// local WebSocket API. It never consumes Host.Events(), so existing TUI and
+// headless consumers keep their single-reader semantics.
+func (h *Host) SubscribeEvents() (<-chan Event, func()) {
+	updates := make(chan Event, 64)
+	h.eventSubMu.Lock()
+	if h.eventSubsClosed {
+		close(updates)
+		h.eventSubMu.Unlock()
+		return updates, func() {}
+	}
+	h.eventSubs[updates] = struct{}{}
+	h.eventSubMu.Unlock()
+
+	var once sync.Once
+	return updates, func() {
+		once.Do(func() {
+			h.eventSubMu.Lock()
+			if _, ok := h.eventSubs[updates]; ok {
+				delete(h.eventSubs, updates)
+				close(updates)
+			}
+			h.eventSubMu.Unlock()
+		})
+	}
+}
+
 // ── 事件发射 ──
 
 func (h *Host) emitEvent(ev Event) {
@@ -1065,6 +1097,22 @@ func (h *Host) emitEvent(ev Event) {
 		default:
 		}
 	}
+	h.eventSubMu.Lock()
+	for updates := range h.eventSubs {
+		select {
+		case updates <- ev:
+		default:
+			select {
+			case <-updates:
+			default:
+			}
+			select {
+			case updates <- ev:
+			default:
+			}
+		}
+	}
+	h.eventSubMu.Unlock()
 }
 
 func (h *Host) emitDelta(delta string) {
@@ -1097,6 +1145,16 @@ func (h *Host) closeOutputChannels() {
 	close(h.done)
 	close(h.events)
 	close(h.streamCh)
+}
+
+func (h *Host) closeEventSubscribers() {
+	h.eventSubMu.Lock()
+	defer h.eventSubMu.Unlock()
+	h.eventSubsClosed = true
+	for updates := range h.eventSubs {
+		close(updates)
+		delete(h.eventSubs, updates)
+	}
 }
 
 func (h *Host) emitClear() {

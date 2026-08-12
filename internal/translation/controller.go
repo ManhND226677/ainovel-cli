@@ -99,6 +99,51 @@ func (c *Controller) Run(ctx context.Context, trigger string) error {
 	}
 }
 
+// Retry queues only failed or stale chapters selected by the local dashboard.
+// It bypasses Coordinator policy because this is an explicit human recovery
+// action, while still reusing the durable job, fingerprint, glossary and retry
+// mechanics of the normal translation pipeline.
+func (c *Controller) Retry(ctx context.Context, chapters []int) error {
+	if c == nil || !c.Policy.Enabled {
+		return fmt.Errorf("translation is not enabled")
+	}
+	chapters = normalizeChapters(chapters)
+	policy := c.Policy.Normalize()
+	if len(chapters) == 0 {
+		return fmt.Errorf("retry requires at least one chapter")
+	}
+	if len(chapters) > policy.MaxBatchChapters {
+		return fmt.Errorf("retry batch size %d exceeds max_batch_chapters %d", len(chapters), policy.MaxBatchChapters)
+	}
+	_, sources, err := c.collectSnapshot("web_retry")
+	if err != nil {
+		return err
+	}
+	status, err := c.Store.LoadStatus()
+	if err != nil {
+		return err
+	}
+	for _, chapter := range chapters {
+		record, ok := status.Chapters[chapter]
+		if !ok || (record.State != ChapterFailed && record.State != ChapterStale) {
+			return fmt.Errorf("chapter %d is not failed or stale", chapter)
+		}
+		if _, ok := sources[chapter]; !ok {
+			return fmt.Errorf("source chapter %d is unavailable", chapter)
+		}
+	}
+	job, err := c.Store.QueueJob(Decision{
+		Action:   DecisionRetranslate,
+		Chapters: chapters,
+		Reason:   "Người dùng yêu cầu thử lại từ dashboard",
+	}, sources)
+	if err != nil {
+		return err
+	}
+	c.report("info", fmt.Sprintf("Đã xếp lại lô retry chương %s", formatChapters(job.Chapters)))
+	return c.executeJob(ctx, job, sources)
+}
+
 func (c *Controller) runOnce(ctx context.Context, trigger string) error {
 	policy := c.Policy.Normalize()
 	c.mu.Lock()
@@ -363,4 +408,21 @@ func formatChapters(chapters []int) string {
 		return fmt.Sprintf("%d", chapters[0])
 	}
 	return fmt.Sprintf("%d–%d", chapters[0], chapters[len(chapters)-1])
+}
+
+func normalizeChapters(chapters []int) []int {
+	seen := make(map[int]struct{}, len(chapters))
+	result := make([]int, 0, len(chapters))
+	for _, chapter := range chapters {
+		if chapter <= 0 {
+			continue
+		}
+		if _, ok := seen[chapter]; ok {
+			continue
+		}
+		seen[chapter] = struct{}{}
+		result = append(result, chapter)
+	}
+	sort.Ints(result)
+	return result
 }

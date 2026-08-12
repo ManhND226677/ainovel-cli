@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/voocel/ainovel-cli/internal/host"
+	"github.com/voocel/ainovel-cli/internal/translation"
 )
 
 // Options configures the local dashboard API. It intentionally binds to
@@ -40,7 +41,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/health", s.health)
 	mux.HandleFunc("/api/state", s.state)
 	mux.HandleFunc("/api/events", s.events)
+	mux.HandleFunc("/api/ws", s.websocket)
 	mux.HandleFunc("/api/agents/", s.agent)
+	mux.HandleFunc("/api/translation/status", s.translationStatus)
+	mux.HandleFunc("/api/translation/retry", s.translationRetry)
 	mux.HandleFunc("/api/engine/start", s.start)
 	mux.HandleFunc("/api/engine/resume", s.resume)
 	mux.HandleFunc("/api/engine/continue", s.continueEngine)
@@ -49,10 +53,11 @@ func (s *Server) routes() http.Handler {
 }
 
 type stateResponse struct {
-	Online    bool             `json:"online"`
-	Snapshot  snapshotResponse `json:"snapshot"`
-	Agents    []agentResponse  `json:"agents"`
-	UpdatedAt time.Time        `json:"updated_at"`
+	Online      bool                `json:"online"`
+	Snapshot    snapshotResponse    `json:"snapshot"`
+	Agents      []agentResponse     `json:"agents"`
+	Translation *translation.Status `json:"translation,omitempty"`
+	UpdatedAt   time.Time           `json:"updated_at"`
 }
 
 type snapshotResponse struct {
@@ -100,14 +105,19 @@ type contextResponse struct {
 }
 
 type eventResponse struct {
-	Seq      int64     `json:"seq"`
-	Time     time.Time `json:"time"`
-	TaskID   string    `json:"task_id,omitempty"`
-	Agent    string    `json:"agent,omitempty"`
-	Category string    `json:"category,omitempty"`
-	Kind     string    `json:"kind,omitempty"`
-	Summary  string    `json:"summary,omitempty"`
-	Priority string    `json:"priority,omitempty"`
+	Seq        int64     `json:"seq"`
+	Time       time.Time `json:"time"`
+	TaskID     string    `json:"task_id,omitempty"`
+	Agent      string    `json:"agent,omitempty"`
+	Category   string    `json:"category,omitempty"`
+	Kind       string    `json:"kind,omitempty"`
+	Summary    string    `json:"summary,omitempty"`
+	Priority   string    `json:"priority,omitempty"`
+	Level      string    `json:"level,omitempty"`
+	Detail     string    `json:"detail,omitempty"`
+	Failed     bool      `json:"failed,omitempty"`
+	FinishedAt time.Time `json:"finished_at,omitempty"`
+	RetryAt    time.Time `json:"retry_at,omitempty"`
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +139,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		agents = append(agents, toAgent(agent))
 	}
 	writeJSON(w, http.StatusOK, stateResponse{
-		Online: true, Snapshot: toSnapshot(snap), Agents: agents, UpdatedAt: time.Now(),
+		Online: true, Snapshot: toSnapshot(snap), Agents: agents, Translation: s.translationSnapshot(), UpdatedAt: time.Now(),
 	})
 }
 
@@ -164,10 +174,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		if levelFilter != "" && !strings.EqualFold(level, levelFilter) {
 			continue
 		}
-		result = append(result, eventResponse{
-			Seq: item.Seq, Time: item.Time, TaskID: item.TaskID, Agent: canonicalAgent(item.Agent),
-			Category: item.Category, Kind: kind, Summary: item.Summary, Priority: string(item.Priority),
-		})
+		converted := runtimeEvent(item)
+		converted.Kind = kind
+		converted.Level = level
+		result = append(result, converted)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": result, "next": lastSeq(result)})
 }
@@ -296,11 +306,37 @@ func canonicalAgent(name string) string {
 
 func payloadString(payload any, key string) string {
 	if values, ok := payload.(map[string]any); ok {
-		if value, ok := values[key].(string); ok {
-			return value
+		for _, candidate := range []string{key, strings.ToUpper(key[:1]) + key[1:]} {
+			if value, ok := values[candidate].(string); ok {
+				return value
+			}
 		}
 	}
 	return ""
+}
+
+func payloadBool(payload any, key string) bool {
+	if values, ok := payload.(map[string]any); ok {
+		for _, candidate := range []string{key, strings.ToUpper(key[:1]) + key[1:]} {
+			if value, ok := values[candidate].(bool); ok {
+				return value
+			}
+		}
+	}
+	return false
+}
+
+func payloadTime(payload any, key string) time.Time {
+	if values, ok := payload.(map[string]any); ok {
+		for _, candidate := range []string{key, strings.ToUpper(key[:1]) + key[1:]} {
+			if value, ok := values[candidate].(string); ok {
+				if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+					return parsed
+				}
+			}
+		}
+	}
+	return time.Time{}
 }
 
 func lastSeq(items []eventResponse) int64 {

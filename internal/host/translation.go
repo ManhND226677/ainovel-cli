@@ -2,6 +2,7 @@ package host
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/voocel/agentcore"
@@ -125,4 +126,27 @@ func (h *Host) TranslationStatus() (translation.Status, error) {
 		return translation.Status{}, fmt.Errorf("translation is not enabled for this book")
 	}
 	return h.translation.Store.LoadStatus()
+}
+
+// RetryTranslations explicitly requeues failed/stale chapters selected by the
+// web dashboard. The actual LLM work runs under Host lifecycle ownership and
+// reports progress through the normal event projection.
+func (h *Host) RetryTranslations(chapters []int) error {
+	if h.translation == nil || !h.translation.Policy.Enabled {
+		return fmt.Errorf("translation is not enabled for this book")
+	}
+	chapters = append([]int(nil), chapters...)
+	sort.Ints(chapters)
+	if len(chapters) == 0 {
+		return fmt.Errorf("retry requires at least one chapter")
+	}
+	if !h.launchAsync(func() {
+		h.emitEvent(Event{Time: time.Now(), Agent: "translation_coordinator", Category: "TRANSLATION", Level: "info", Summary: fmt.Sprintf("Dashboard yêu cầu retry %d chương dịch", len(chapters))})
+		if err := h.translation.Retry(h.runCtx, chapters); err != nil && h.runCtx.Err() == nil {
+			h.emitEvent(Event{Time: time.Now(), Agent: "translation_coordinator", Category: "ERROR", Level: "error", Summary: "Retry batch dịch thất bại: " + err.Error(), Detail: err.Error()})
+		}
+	}) {
+		return fmt.Errorf("Host đang đóng, không thể retry batch dịch")
+	}
+	return nil
 }
