@@ -10,6 +10,7 @@ import (
 
 	"github.com/voocel/ainovel-cli/internal/domain"
 	"github.com/voocel/ainovel-cli/internal/store"
+	"github.com/voocel/ainovel-cli/internal/translation"
 )
 
 // newTestStore 构造一个 t.TempDir() 之上的最小 store，已写入 1..n 章终稿与 progress。
@@ -302,5 +303,60 @@ func TestSanitizeFileName(t *testing.T) {
 		if got := sanitizeFileName(in); got != want {
 			t.Errorf("sanitizeFileName(%q) = %q want %q", in, got, want)
 		}
+	}
+}
+
+func TestRun_VietnameseTXTUsesTranslationArtifacts(t *testing.T) {
+	s, dir := newTestStore(t, "光斑", []int{1, 2})
+	translations := translation.NewStore(dir)
+	if err := translations.Init(); err != nil {
+		t.Fatal(err)
+	}
+	for chapter, item := range map[int]struct{ source, vi string }{
+		1: {source: "正文 ch 1。", vi: "Nội dung chương một."},
+	} {
+		sourceText, vietnamese := item.source, item.vi
+		source := translation.NewSourceChapter(chapter, sourceText)
+		job, err := translations.QueueJob(translation.Decision{Action: translation.DecisionTranslate, Chapters: []int{chapter}, Reason: "test"}, map[int]translation.SourceChapter{chapter: source})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := translations.StartChapter(job.ID, source); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := translations.CommitChapter(source, vietnamese, "p", "m", job.ID, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res, err := Run(context.Background(), Deps{Store: s, Translation: translations}, Options{Language: LanguageVietnamese})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := filepath.Base(res.Path), "光斑-vi.txt"; got != want {
+		t.Fatalf("Vietnamese default path = %q, want %q", got, want)
+	}
+	if res.Chapters != 1 || len(res.Skipped) != 1 || res.Skipped[0] != 2 {
+		t.Fatalf("unexpected Vietnamese result: %+v", res)
+	}
+	data, err := os.ReadFile(res.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{"BẢN DỊCH TIẾNG VIỆT", "Chương 1", "Nội dung chương một."} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Vietnamese export missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "正文 ch") || strings.Contains(text, "第 1 章") {
+		t.Errorf("Vietnamese export must not include Chinese source labels/body:\n%s", text)
+	}
+}
+
+func TestRun_VietnameseRequiresTranslationStore(t *testing.T) {
+	s, _ := newTestStore(t, "X", []int{1})
+	if _, err := Run(context.Background(), Deps{Store: s}, Options{Language: LanguageVietnamese}); err == nil {
+		t.Fatal("Vietnamese export without translation store should fail")
 	}
 }

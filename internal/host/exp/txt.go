@@ -135,3 +135,19 @@ func renderTXT(
 	}
 	return b.String()
 }
+
+// renderVietnameseTXT renders only Vietnamese presentation labels. It does not
+// consume Chinese outline/volume names because those have not been translated.
+func renderVietnameseTXT(chapters []int, bodies map[int]string) string {
+	var b strings.Builder
+	b.WriteString("BẢN DỊCH TIẾNG VIỆT\n\n")
+	for i, ch := range chapters {
+		fmt.Fprintf(&b, "Chương %d\n\n", ch)
+		b.WriteString(strings.TrimSpace(bodies[ch]))
+		b.WriteString("\n")
+		if i < len(chapters)-1 {
+			b.WriteString("\n\n")
+		}
+	}
+	return b.String()
+}

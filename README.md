@@ -2,6 +2,8 @@
 
 全自动 AI 长篇小说创作引擎。确定性引擎跑完整本书，模型在每个需要判断的位置被精确使用：Engine 按事实路由驱动 Architect / Writer / Editor 三个自主创作代理，语义裁定按需唤醒 Arbiter。从一句话需求到完整小说，全程无需人工干预。
 
+> **Người dùng Việt Nam:** Xem [README tiếng Việt](README.vi.md) để sử dụng giao diện Việt hóa và Translation Coordinator Agent dịch Trung → Việt chạy song song.
+
 <p align="center">
   <img src="scripts/sample.gif" alt="ainovel-cli demo" width="800">
   <img src="scripts/novel.png" alt="ainovel-cli bg" width="800">

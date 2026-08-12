@@ -29,6 +29,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/rules"
 	storepkg "github.com/voocel/ainovel-cli/internal/store"
 	"github.com/voocel/ainovel-cli/internal/tools"
+	"github.com/voocel/ainovel-cli/internal/translation"
 	"github.com/voocel/ainovel-cli/internal/userrules"
 )
 
@@ -44,6 +45,7 @@ type Host struct {
 	engine          *engine
 	thinkingApplier agents.ApplyThinking // /model 调推理强度时联动各 Worker
 	writerRestore   *ctxpack.WriterRestorePack
+	translation     *translation.Controller
 	userRules       *userrules.Service
 	observer        *observer
 	usage           *UsageTracker
@@ -208,6 +210,26 @@ func New(cfg bootstrap.Config, bundle assets.Bundle, options ...NewOption) (*Hos
 	}
 	h.runCtx, h.runCancel = context.WithCancel(context.Background())
 	h.observer = newObserver(store, h.emitEvent, h.emitDelta, h.emitClear)
+	if cfg.Translation.IsEnabled() {
+		translationStore := translation.NewStore(cfg.OutputDir)
+		if err := translationStore.Init(); err != nil {
+			return nil, translationInitError(err)
+		}
+		coordinatorModel := newUsageTrackedModel(translationRoleModel(models, "translation_coordinator", "editor"), "translation_coordinator", usage.Record)
+		translatorModel := newUsageTrackedModel(translationRoleModel(models, "translator", "writer"), "translator", usage.Record)
+		h.translation = &translation.Controller{
+			Store:             translationStore,
+			Source:            translationSource{store: store},
+			CoordinatorModel:  coordinatorModel,
+			TranslatorModel:   translatorModel,
+			CoordinatorPrompt: bundle.Prompts.TranslationCoordinator,
+			TranslatorPrompt:  bundle.Prompts.Translator,
+			CoordinatorMeta:   modelMeta(models, "translation_coordinator", "editor"),
+			TranslatorMeta:    modelMeta(models, "translator", "writer"),
+			Policy:            translationPolicy(cfg.Translation),
+			Report:            translationReporter(h),
+		}
+	}
 	// 宿主侧 Arbiter 与 Worker 共用同一条 ToolProgress → observer → 工作台链路。
 	h.runCtx = agentcore.WithToolProgress(h.runCtx, h.observer.workerProgress)
 	if cfg.Notify.IsEnabled() {
@@ -274,6 +296,11 @@ func New(cfg bootstrap.Config, bundle assets.Bundle, options ...NewOption) (*Hos
 		budget:    h.budget,
 		gate:      h.gate,
 		refresh:   h.refreshWriterRestore,
+		afterWorker: func(agent string) {
+			if agent == "writer" || agent == "editor" {
+				h.triggerTranslation("worker_" + agent)
+			}
+		},
 		emitEvent: h.emitEvent,
 		notify: func(kind, level, title, body string) {
 			h.notifier.Send(notify.Notification{Kind: kind, Level: level, Title: title, Body: body})
@@ -960,6 +987,7 @@ func (h *Host) runEnded() {
 		summary := completionSummary(h.store)
 		h.mu.Unlock()
 		h.emitEvent(Event{Time: time.Now(), Category: "SYSTEM", Summary: summary, Level: "success"})
+		h.triggerTranslation("book_completed")
 		h.notifier.Send(notify.Notification{
 			Kind: notify.KindRunEnd, Level: "info", Title: "ainovel: 创作完成",
 			Body: h.runEndBody(progress.NovelName, summary),
@@ -1875,5 +1903,9 @@ func (h *Host) continueAfterImport(opts imp.Options) bool {
 // 因此**不要求 Engine 停机**——写作中途也可以随时导出"现阶段成品"。
 // 只读到 Progress.CompletedChapters + 章节终稿 + 大纲 + premise 的一致快照。
 func (h *Host) Export(ctx context.Context, opts exp.Options) (*exp.Result, error) {
-	return exp.Run(ctx, exp.Deps{Store: h.store}, opts)
+	var translations *translation.Store
+	if h.translation != nil {
+		translations = h.translation.Store
+	}
+	return exp.Run(ctx, exp.Deps{Store: h.store, Translation: translations}, opts)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/voocel/ainovel-cli/internal/bootstrap"
 	"github.com/voocel/ainovel-cli/internal/host"
+	"github.com/voocel/ainovel-cli/internal/i18n"
 )
 
 type configStep int
@@ -797,8 +798,8 @@ func renderModelConfigModal(width int, state *modelConfigState) string {
 	boxW := min(max(60, width*3/5), 76, width-4)
 	contentW := paddedModalContentWidth(boxW)
 	var lines []string
-	title := "/config 配置模型"
-	hint := "↑↓ 选择 · Enter 确认 · Esc 取消"
+	title := i18n.T("modal.config.title")
+	hint := i18n.T("modal.config.hint")
 
 	switch state.step {
 	case configStepProvider:

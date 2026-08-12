@@ -99,7 +99,9 @@
 
   // 可选。按角色覆盖默认模型；未配的角色使用上面的 model。
   // reasoning_effort 也可按角色覆盖；未配时继承顶层 reasoning_effort。
-  // 角色：architect / writer / editor。fallbacks 在主模型失败时按序尝试。
+  // Vai trò: architect / writer / editor / translation_coordinator / translator.
+  // translation_coordinator kế thừa editor khi chưa cấu hình; translator kế thừa writer.
+  // fallbacks được thử theo thứ tự khi mô hình chính thất bại.
   // 注意：这里的 provider 同样是“指针”，必须指向 providers 里存在的 key。
   // "roles": {
   //   "writer": {
@@ -111,8 +113,23 @@
   //   "architect": { "provider": "openrouter", "model": "google/gemini-3.1-pro" }
   // },
 
-  // 写作风格：default / suspense / fantasy / romance。
+  // Phong cách sáng tác: default / suspense / fantasy / romance.
   "style": "default"
+
+  // Tùy chọn: bật nhánh dịch Trung → Việt chạy song song với sáng tác.
+  // Coordinator Agent tự chọn thời điểm/lô chương dựa trên fact đã commit;
+  // các giá trị sau chỉ là guardrail, không phải lịch cố định.
+  // "translation": {
+  //   "enabled": true,
+  //   "min_stable_chapters": 1,
+  //   "max_batch_chapters": 8,
+  //   "max_lag_chapters": 24,
+  //   "debounce_seconds": 15,
+  //   "max_retries": 3,
+  //   "max_concurrent_batches": 1,
+  //   "budget_usd": 0,
+  //   "auto_retranslate_on_rewrite": false
+  // },
 
   // 旧版全局上下文窗口，保留作所有模型的回退。优先级低于 models[].context_window，
   // 高于模型注册表和 200k 默认值。仅影响压缩阈值，不改变 API 实际请求长度。

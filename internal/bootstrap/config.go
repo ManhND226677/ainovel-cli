@@ -188,12 +188,14 @@ type RoleConfig struct {
 // import_* 是导入语义函数的模型档位旋钮（docs/import-pipeline.md §13.1）：
 // 未配置时落 architect，配置后可把机械性更强的函数指到更便宜档位。
 var knownRoles = map[string]bool{
-	"architect":         true,
-	"writer":            true,
-	"editor":            true,
-	"import_segment":    true,
-	"import_analyze":    true,
-	"import_synthesize": true,
+	"architect":               true,
+	"writer":                  true,
+	"editor":                  true,
+	"translation_coordinator": true,
+	"translator":              true,
+	"import_segment":          true,
+	"import_analyze":          true,
+	"import_synthesize":       true,
 }
 
 // Config 小说应用配置。
@@ -226,6 +228,9 @@ type Config struct {
 
 	// Notify 无人值守告警配置；缺省启用（system 通道兜底）。
 	Notify NotifyConfig `json:"notify,omitzero"`
+
+	// Translation 控制中译越的并行翻译分支；缺省关闭，确保已有项目零行为变化。
+	Translation TranslationConfig `json:"translation,omitzero"`
 }
 
 // BudgetConfig 是用户对单本书钱包的政策声明。越线停机等同于用户在那一刻
@@ -238,6 +243,24 @@ type BudgetConfig struct {
 
 // Enabled 返回预算政策是否启用。
 func (b BudgetConfig) Enabled() bool { return b.BookUSD > 0 }
+
+// NotifyConfig 无人值守告警通道配置。
+// TranslationConfig là chính sách cho Translation Coordinator và Translation Agent.
+// Các ngưỡng là guardrail của code, không thay thế phán đoán về thời điểm mở lô của Coordinator.
+type TranslationConfig struct {
+	Enabled                  bool    `json:"enabled,omitempty"`
+	MinStableChapters        int     `json:"min_stable_chapters,omitempty"`
+	MaxBatchChapters         int     `json:"max_batch_chapters,omitempty"`
+	MaxLagChapters           int     `json:"max_lag_chapters,omitempty"`
+	DebounceSeconds          int     `json:"debounce_seconds,omitempty"`
+	MaxRetries               int     `json:"max_retries,omitempty"`
+	MaxConcurrentBatches     int     `json:"max_concurrent_batches,omitempty"`
+	BudgetUSD                float64 `json:"budget_usd,omitempty"`
+	AutoRetranslateOnRewrite bool    `json:"auto_retranslate_on_rewrite,omitempty"`
+}
+
+// IsEnabled returns whether the translation branch is enabled for this book.
+func (t TranslationConfig) IsEnabled() bool { return t.Enabled }
 
 // NotifyConfig 无人值守告警通道配置。
 type NotifyConfig struct {
@@ -338,6 +361,20 @@ func (c *Config) ValidateBase() error {
 		return fmt.Errorf("budget.warn_ratio must be in (0, 1): %w", errs.ErrConfig)
 	}
 
+	// Kiểm tra chính sách dịch song song.
+	if c.Translation.MinStableChapters < 0 || c.Translation.MaxBatchChapters < 0 ||
+		c.Translation.MaxLagChapters < 0 || c.Translation.DebounceSeconds < 0 ||
+		c.Translation.MaxRetries < 0 || c.Translation.MaxConcurrentBatches < 0 ||
+		c.Translation.BudgetUSD < 0 {
+		return fmt.Errorf("translation values must be non-negative: %w", errs.ErrConfig)
+	}
+	if c.Translation.IsEnabled() && c.Translation.MaxBatchChapters == 0 {
+		return fmt.Errorf("translation.max_batch_chapters must be > 0 when enabled: %w", errs.ErrConfig)
+	}
+	if c.Translation.IsEnabled() && c.Translation.MaxConcurrentBatches != 1 {
+		return fmt.Errorf("translation.max_concurrent_batches must be 1: %w", errs.ErrConfig)
+	}
+
 	// 校验告警配置
 	if err := validateConfigText("notify.command", c.Notify.Command); err != nil {
 		return err
@@ -425,6 +462,26 @@ func (c *Config) FillDefaults() {
 	}
 	if c.Budget.Enabled() && c.Budget.WarnRatio == 0 {
 		c.Budget.WarnRatio = 0.8
+	}
+	if c.Translation.IsEnabled() {
+		if c.Translation.MinStableChapters == 0 {
+			c.Translation.MinStableChapters = 1
+		}
+		if c.Translation.MaxBatchChapters == 0 {
+			c.Translation.MaxBatchChapters = 8
+		}
+		if c.Translation.MaxLagChapters == 0 {
+			c.Translation.MaxLagChapters = 24
+		}
+		if c.Translation.DebounceSeconds == 0 {
+			c.Translation.DebounceSeconds = 15
+		}
+		if c.Translation.MaxRetries == 0 {
+			c.Translation.MaxRetries = 3
+		}
+		if c.Translation.MaxConcurrentBatches == 0 {
+			c.Translation.MaxConcurrentBatches = 1
+		}
 	}
 }
 

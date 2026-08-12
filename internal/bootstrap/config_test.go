@@ -132,3 +132,25 @@ func TestValidateBaseRejectsBadStreamIdleTimeout(t *testing.T) {
 		t.Fatalf("非法 stream_idle_timeout 应拒绝并包装 ErrConfig，得到: %v", err)
 	}
 }
+
+func TestTranslationConfigDefaultsAndGuards(t *testing.T) {
+	cfg := Config{Translation: TranslationConfig{Enabled: true}}
+	cfg.FillDefaults()
+	if cfg.Translation.MinStableChapters != 1 || cfg.Translation.MaxBatchChapters != 8 ||
+		cfg.Translation.MaxLagChapters != 24 || cfg.Translation.DebounceSeconds != 15 ||
+		cfg.Translation.MaxRetries != 3 || cfg.Translation.MaxConcurrentBatches != 1 {
+		t.Fatalf("unexpected translation defaults: %+v", cfg.Translation)
+	}
+
+	invalid := Config{
+		Provider:  "openrouter",
+		ModelName: "test-model",
+		Providers: map[string]ProviderConfig{"openrouter": {APIKey: "sk-test-123456"}},
+		Translation: TranslationConfig{
+			Enabled: true, MaxBatchChapters: 1, MaxConcurrentBatches: 2,
+		},
+	}
+	if err := invalid.ValidateBase(); !errors.Is(err, errs.ErrConfig) {
+		t.Fatalf("parallel translation batches should be rejected, got %v", err)
+	}
+}

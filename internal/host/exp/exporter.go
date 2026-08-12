@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
+	"github.com/voocel/ainovel-cli/internal/translation"
 )
 
 // Run 执行一次导出。同步返回，IO 量小（本地文件读写）。
@@ -26,6 +27,16 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	if deps.Store == nil {
 		return nil, fmt.Errorf("exp: deps.Store is nil")
 	}
+	language := opts.Language
+	if language == "" {
+		language = LanguageChinese
+	}
+	if language != LanguageChinese && language != LanguageVietnamese {
+		return nil, fmt.Errorf("exp: unsupported language %q", language)
+	}
+	if language == LanguageVietnamese && deps.Translation == nil {
+		return nil, fmt.Errorf("exp: Vietnamese translation store is unavailable")
+	}
 
 	if opts.Format == "" {
 		f, err := inferFormat(opts.OutPath)
@@ -36,6 +47,9 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	}
 	if opts.Format != FormatTXT && opts.Format != FormatEPUB {
 		return nil, fmt.Errorf("exp: 暂不支持的格式 %q", opts.Format)
+	}
+	if language == LanguageVietnamese && opts.Format != FormatTXT {
+		return nil, fmt.Errorf("exp: Vietnamese export currently supports TXT only")
 	}
 
 	progress, err := deps.Store.Progress.Load()
@@ -68,12 +82,24 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	}
 
 	var chapters, skipped []int
-	for ch := from; ch <= to; ch++ {
-		if _, ok := completed[ch]; ok {
-			chapters = append(chapters, ch)
-		} else {
-			skipped = append(skipped, ch)
+	var translated map[int]translation.ChapterRecord
+	if language == LanguageVietnamese {
+		status, err := deps.Translation.LoadStatus()
+		if err != nil {
+			return nil, fmt.Errorf("load Vietnamese translation status: %w", err)
 		}
+		translated = status.Chapters
+	}
+	for ch := from; ch <= to; ch++ {
+		if _, ok := completed[ch]; !ok {
+			skipped = append(skipped, ch)
+			continue
+		}
+		if language == LanguageVietnamese && translated[ch].State != translation.ChapterCompleted {
+			skipped = append(skipped, ch)
+			continue
+		}
+		chapters = append(chapters, ch)
 	}
 	if len(chapters) == 0 {
 		return nil, fmt.Errorf("范围 %d..%d 内无已完成章节", from, to)
@@ -81,12 +107,22 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 
 	bodies := make(map[int]string, len(chapters))
 	for _, ch := range chapters {
-		text, err := deps.Store.Drafts.LoadChapterText(ch)
-		if err != nil {
-			return nil, fmt.Errorf("读取第 %d 章失败：%w", ch, err)
+		var text string
+		if language == LanguageVietnamese {
+			var err error
+			text, _, err = deps.Translation.LoadChapter(ch)
+			if err != nil {
+				return nil, fmt.Errorf("load Vietnamese chapter %d: %w", ch, err)
+			}
+		} else {
+			var err error
+			text, err = deps.Store.Drafts.LoadChapterText(ch)
+			if err != nil {
+				return nil, fmt.Errorf("读取第 %d 章失败：%w", ch, err)
+			}
 		}
 		if strings.TrimSpace(text) == "" {
-			return nil, fmt.Errorf("progress 标记第 %d 章已完成，但 chapters/%02d.md 缺失或为空", ch, ch)
+			return nil, fmt.Errorf("chapter %d is empty in %s export", ch, language)
 		}
 		bodies[ch] = text
 	}
@@ -103,7 +139,11 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 		if name == "" {
 			name = filepath.Base(deps.Store.Dir())
 		}
-		outPath = filepath.Join(deps.Store.Dir(), sanitizeFileName(name)+"."+string(opts.Format))
+		suffix := ""
+		if language == LanguageVietnamese {
+			suffix = "-vi"
+		}
+		outPath = filepath.Join(deps.Store.Dir(), sanitizeFileName(name)+suffix+"."+string(opts.Format))
 	}
 
 	if !opts.Overwrite {
@@ -115,6 +155,9 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	}
 
 	titleIdx := buildTitleIndex(outline)
+	if language == LanguageVietnamese {
+		titleIdx = make(chapterTitleIndex)
+	}
 	for _, ch := range chapters {
 		summary, err := deps.Store.Summaries.LoadSummary(ch)
 		if err != nil {
@@ -125,14 +168,18 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 		}
 	}
 	var locations map[int]chapterLocation
-	if len(volumes) > 0 {
+	if language == LanguageChinese && len(volumes) > 0 {
 		locations = buildLocations(volumes)
 	}
 
 	var data []byte
 	switch opts.Format {
 	case FormatTXT:
-		data = []byte(renderTXT(progress.NovelName, chapters, titleIdx, locations, bodies))
+		if language == LanguageVietnamese {
+			data = []byte(renderVietnameseTXT(chapters, bodies))
+		} else {
+			data = []byte(renderTXT(progress.NovelName, chapters, titleIdx, locations, bodies))
+		}
 	case FormatEPUB:
 		buf, err := renderEPUB(progress.NovelName, chapters, titleIdx, locations, bodies)
 		if err != nil {

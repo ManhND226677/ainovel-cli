@@ -26,16 +26,18 @@ var voiceFS embed.FS
 
 // Prompts 表示嵌入的提示词集合。
 type Prompts struct {
-	ArchitectShort   string
-	ArchitectLong    string
-	Writer           string // 协议模板,含 {{VOICE}} 占位符;终稿经 BuildWriterPrompt 组装
-	Editor           string
-	ImportSegment    string // 语义切分：识别章节/卷/附属文本边界
-	ImportAnalyze    string // 连续批次逐章事实提取
-	ImportSynthesize string // 分层综合与卷弧划分（全书 BookSynthesis）
-	ImportRange      string // 长书 Map 阶段连续区间摘要（RangeDigest）
-	SimulationSource string
-	SimulationMerge  string
+	ArchitectShort         string
+	ArchitectLong          string
+	Writer                 string // 协议模板,含 {{VOICE}} 占位符;终稿经 BuildWriterPrompt 组装
+	Editor                 string
+	TranslationCoordinator string
+	Translator             string
+	ImportSegment          string // 语义切分：识别章节/卷/附属文本边界
+	ImportAnalyze          string // 连续批次逐章事实提取
+	ImportSynthesize       string // 分层综合与卷弧划分（全书 BookSynthesis）
+	ImportRange            string // 长书 Map 阶段连续区间摘要（RangeDigest）
+	SimulationSource       string
+	SimulationMerge        string
 
 	// Arbiter 裁定提示词(LLM-as-function,无 simulation guidance 包装)。
 	ArbiterPlanStart    string
@@ -174,16 +176,18 @@ func loadReferences(style string, opts LoadOptions) tools.References {
 
 func loadPrompts() Prompts {
 	return Prompts{
-		ArchitectShort:   WithSimulationGuidance(mustRead(promptsFS, "prompts/architect-short.md"), "architect"),
-		ArchitectLong:    WithSimulationGuidance(mustRead(promptsFS, "prompts/architect-long.md"), "architect"),
-		Writer:           WithSimulationGuidance(mustRead(promptsFS, "prompts/writer.md"), "writer"),
-		Editor:           WithSimulationGuidance(mustRead(promptsFS, "prompts/editor.md"), "editor"),
-		ImportSegment:    mustRead(promptsFS, "prompts/import-segment.md"),
-		ImportAnalyze:    mustRead(promptsFS, "prompts/import-analyze.md"),
-		ImportSynthesize: mustRead(promptsFS, "prompts/import-synthesize.md"),
-		ImportRange:      mustRead(promptsFS, "prompts/import-range.md"),
-		SimulationSource: mustRead(promptsFS, "prompts/simulation-source.md"),
-		SimulationMerge:  mustRead(promptsFS, "prompts/simulation-merge.md"),
+		ArchitectShort:         WithSimulationGuidance(mustRead(promptsFS, "prompts/architect-short.md"), "architect"),
+		ArchitectLong:          WithSimulationGuidance(mustRead(promptsFS, "prompts/architect-long.md"), "architect"),
+		Writer:                 WithSimulationGuidance(mustRead(promptsFS, "prompts/writer.md"), "writer"),
+		Editor:                 WithSimulationGuidance(mustRead(promptsFS, "prompts/editor.md"), "editor"),
+		TranslationCoordinator: mustRead(promptsFS, "prompts/translation-coordinator.md"),
+		Translator:             mustRead(promptsFS, "prompts/translator-zh-vi.md"),
+		ImportSegment:          mustRead(promptsFS, "prompts/import-segment.md"),
+		ImportAnalyze:          mustRead(promptsFS, "prompts/import-analyze.md"),
+		ImportSynthesize:       mustRead(promptsFS, "prompts/import-synthesize.md"),
+		ImportRange:            mustRead(promptsFS, "prompts/import-range.md"),
+		SimulationSource:       mustRead(promptsFS, "prompts/simulation-source.md"),
+		SimulationMerge:        mustRead(promptsFS, "prompts/simulation-merge.md"),
 
 		ArbiterPlanStart:    mustRead(promptsFS, "prompts/arbiter-plan-start.md"),
 		ArbiterIntervention: mustRead(promptsFS, "prompts/arbiter-intervention.md"),

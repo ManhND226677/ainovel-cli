@@ -7,6 +7,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/voocel/ainovel-cli/internal/domain"
 	"github.com/voocel/ainovel-cli/internal/host"
+	"github.com/voocel/ainovel-cli/internal/i18n"
+	"github.com/voocel/ainovel-cli/internal/translation"
 )
 
 type slashCommandSpec struct {
@@ -53,10 +55,11 @@ func (s slashCommandSpec) matches(name string) bool {
 func commandRegistryInstance() commandRegistry {
 	return newCommandRegistry([]slashCommandSpec{
 		{
-			Name:        "help",
-			Group:       "system",
-			Usage:       "/help",
-			Description: "查看命令列表",
+			Name:        i18n.T("command.help.name"),
+			Aliases:     []string{"help"},
+			Group:       "Hệ thống",
+			Usage:       i18n.T("command.help.usage"),
+			Description: i18n.T("command.help.description"),
 			AutoExecute: true,
 			Run: func(m Model, _ []string) (tea.Model, tea.Cmd) {
 				m.help = newHelpState(m.width, m.height)
@@ -65,10 +68,11 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "model",
-			Group:       "system",
-			Usage:       "/model [role]",
-			Description: "切换角色的模型与推理强度",
+			Name:        i18n.T("command.model.name"),
+			Aliases:     []string{"model"},
+			Group:       "Hệ thống",
+			Usage:       i18n.T("command.model.usage"),
+			Description: i18n.T("command.model.description"),
 			AutoExecute: true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				roleHint := ""
@@ -76,7 +80,7 @@ func commandRegistryInstance() commandRegistry {
 					roleHint = args[0]
 					if normalizeRoleKey(roleHint) == "" {
 						m.applyEvent(host.Event{
-							Time: time.Now(), Category: "ERROR", Summary: "未知角色：" + roleHint, Level: "error",
+							Time: time.Now(), Category: "ERROR", Summary: i18n.T("event.unknown_role", roleHint), Level: "error",
 						})
 						m.refreshEventViewport()
 						return m, nil
@@ -88,14 +92,15 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "config",
-			Group:       "system",
-			Usage:       "/config",
-			Description: "新增或编辑 Provider、模型与上下文窗口",
+			Name:        i18n.T("command.config.name"),
+			Aliases:     []string{"config"},
+			Group:       "Hệ thống",
+			Usage:       i18n.T("command.config.usage"),
+			Description: i18n.T("command.config.description"),
 			AutoExecute: true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				if len(args) != 0 {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "用法：/config", Level: "error"})
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: i18n.T("event.usage", i18n.T("command.config.usage")), Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
@@ -105,10 +110,11 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "diag",
-			Group:       "analysis",
-			Usage:       "/diag",
-			Description: "诊断小说创作健康度",
+			Name:        i18n.T("command.diag.name"),
+			Aliases:     []string{"diag"},
+			Group:       "Phân tích",
+			Usage:       i18n.T("command.diag.usage"),
+			Description: i18n.T("command.diag.description"),
 			AutoExecute: true,
 			Run: func(m Model, _ []string) (tea.Model, tea.Cmd) {
 				m.reportSeq++
@@ -118,22 +124,23 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "review",
-			Group:       "writing",
-			Usage:       "/review on|off",
-			Description: "切换逐章验收模式",
+			Name:        i18n.T("command.review.name"),
+			Aliases:     []string{"review"},
+			Group:       "Sáng tác",
+			Usage:       i18n.T("command.review.usage"),
+			Description: i18n.T("command.review.description"),
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
-				if len(args) != 1 || (args[0] != "on" && args[0] != "off") {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "用法：/review on|off", Level: "error"})
+				if len(args) != 1 || (args[0] != "bat" && args[0] != "tat" && args[0] != "on" && args[0] != "off") {
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: i18n.T("event.usage", i18n.T("command.review.usage")), Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
 				mode := domain.ChapterAdvanceReview
-				if args[0] == "off" {
+				if args[0] == "off" || args[0] == "tat" {
 					mode = domain.ChapterAdvanceAuto
 				}
 				if err := m.runtime.SetAdvanceMode(mode); err != nil {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "切换推进模式失败：" + err.Error(), Level: "error"})
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Không thể đổi chế độ tiếp tục: " + err.Error(), Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
@@ -141,20 +148,21 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "next",
-			Group:       "writing",
-			Usage:       "/next",
-			Description: "验收后放行一个新章节",
+			Name:        i18n.T("command.next.name"),
+			Aliases:     []string{"next"},
+			Group:       "Sáng tác",
+			Usage:       i18n.T("command.next.usage"),
+			Description: i18n.T("command.next.description"),
 			AutoExecute: true,
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				if len(args) != 0 {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "用法：/next", Level: "error"})
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: i18n.T("event.usage", i18n.T("command.next.usage")), Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
 				if err := m.runtime.AdvanceOneChapter(); err != nil {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "放行下一章失败：" + err.Error(), Level: "error"})
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Không thể cho phép viết chương tiếp theo: " + err.Error(), Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
@@ -162,10 +170,11 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "import",
-			Group:       "writing",
-			Usage:       "/import <path> [--yes] [--story=open|closed] [--continue] [--guide=<切分指导>]",
-			Description: "语义导入外部小说（无参数则恢复未完成导入；--guide 用自然语言调整切分）",
+			Name:        i18n.T("command.import.name"),
+			Aliases:     []string{"import"},
+			Group:       "Sáng tác",
+			Usage:       i18n.T("command.import.usage"),
+			Description: i18n.T("command.import.description"),
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				m.importSeq++
@@ -184,10 +193,11 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "reopen",
-			Group:       "writing",
-			Usage:       "/reopen [续写方向]",
-			Description: "重开已完结的书继续创作（方向先经裁定注入，再自动续跑）",
+			Name:        i18n.T("command.reopen.name"),
+			Aliases:     []string{"reopen"},
+			Group:       "Sáng tác",
+			Usage:       i18n.T("command.reopen.usage"),
+			Description: i18n.T("command.reopen.description"),
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				if err := m.runtime.Reopen(strings.Join(args, " ")); err != nil {
@@ -201,11 +211,11 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "cocreate",
-			Aliases:     []string{"plan"},
-			Group:       "writing",
-			Usage:       "/cocreate",
-			Description: "暂停创作，共创规划后续阶段走向",
+			Name:        i18n.T("command.cocreate.name"),
+			Aliases:     []string{"cocreate", "plan"},
+			Group:       "Sáng tác",
+			Usage:       i18n.T("command.cocreate.usage"),
+			Description: i18n.T("command.cocreate.description"),
 			AutoExecute: true,
 			Run: func(m Model, _ []string) (tea.Model, tea.Cmd) {
 				if m.mode != modeRunning {
@@ -229,10 +239,11 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "simulate",
-			Group:       "writing",
-			Usage:       "/simulate",
-			Description: "读取 ./simulate 生成或增量更新仿写画像",
+			Name:        i18n.T("command.simulate.name"),
+			Aliases:     []string{"simulate"},
+			Group:       "Sáng tác",
+			Usage:       i18n.T("command.simulate.usage"),
+			Description: i18n.T("command.simulate.description"),
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				m.simSeq++
@@ -250,10 +261,11 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "importsim",
-			Group:       "writing",
-			Usage:       "/importsim <profile.json>",
-			Description: "导入已有仿写画像并按语料指纹合并",
+			Name:        i18n.T("command.importsim.name"),
+			Aliases:     []string{"importsim"},
+			Group:       "Sáng tác",
+			Usage:       i18n.T("command.importsim.usage"),
+			Description: i18n.T("command.importsim.description"),
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				m.simSeq++
@@ -271,10 +283,58 @@ func commandRegistryInstance() commandRegistry {
 			},
 		},
 		{
-			Name:        "export",
-			Group:       "writing",
-			Usage:       "/export [path] [from=N] [to=M] [--overwrite]",
-			Description: "导出已完成章节为 TXT/EPUB",
+			Name:        i18n.T("command.translate.name"),
+			Aliases:     []string{"translate"},
+			Group:       "Sáng tác",
+			Usage:       i18n.T("command.translate.usage"),
+			Description: i18n.T("command.translate.description"),
+			AutoExecute: true,
+			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
+				if len(args) > 1 || (len(args) == 1 && args[0] != "trang-thai") {
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: i18n.T("event.usage", i18n.T("command.translate.usage")), Level: "error"})
+					m.refreshEventViewport()
+					return m, nil
+				}
+				if len(args) == 1 {
+					status, err := m.runtime.TranslationStatus()
+					if err != nil {
+						m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Không thể đọc trạng thái dịch: " + err.Error(), Level: "error"})
+						m.refreshEventViewport()
+						return m, nil
+					}
+					completed, active, failed, stale := 0, 0, 0, 0
+					for _, record := range status.Chapters {
+						switch record.State {
+						case translation.ChapterCompleted:
+							completed++
+						case translation.ChapterFailed:
+							failed++
+						case translation.ChapterStale:
+							stale++
+						default:
+							active++
+						}
+					}
+					m.applyEvent(host.Event{Time: time.Now(), Category: "TRANSLATION", Summary: i18n.T("event.translation_status", completed, active, failed, stale), Level: "info"})
+					m.refreshEventViewport()
+					return m, nil
+				}
+				if err := m.runtime.RequestTranslation(); err != nil {
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Không thể yêu cầu dịch: " + err.Error(), Level: "error"})
+					m.refreshEventViewport()
+					return m, nil
+				}
+				m.applyEvent(host.Event{Time: time.Now(), Category: "TRANSLATION", Summary: i18n.T("event.translation_requested"), Level: "info"})
+				m.refreshEventViewport()
+				return m, nil
+			},
+		},
+		{
+			Name:        i18n.T("command.export.name"),
+			Aliases:     []string{"export"},
+			Group:       "Sáng tác",
+			Usage:       i18n.T("command.export.usage"),
+			Description: i18n.T("command.export.description"),
 			AutoExecute: true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				cmd, err := startExport(m.runtime, args)
@@ -303,14 +363,14 @@ func (m Model) handleSlashCommand(cmd slashCommand) (tea.Model, tea.Cmd) {
 	spec, ok := commandRegistryInstance().Find(cmd.name)
 	if !ok {
 		m.applyEvent(host.Event{
-			Time: time.Now(), Category: "ERROR", Summary: "未知命令：/" + cmd.name, Level: "error",
+			Time: time.Now(), Category: "ERROR", Summary: i18n.T("event.command_unknown", cmd.name), Level: "error",
 		})
 		m.refreshEventViewport()
 		return m, nil
 	}
 	if spec.NeedsIdle && m.snapshot.IsRunning {
 		m.applyEvent(host.Event{
-			Time: time.Now(), Category: "ERROR", Summary: "命令仅可在空闲状态执行：/" + spec.Name, Level: "error",
+			Time: time.Now(), Category: "ERROR", Summary: i18n.T("event.command_needs_idle", spec.Name), Level: "error",
 		})
 		m.refreshEventViewport()
 		return m, nil

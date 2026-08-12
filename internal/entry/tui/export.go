@@ -10,6 +10,7 @@ import (
 
 	"github.com/voocel/ainovel-cli/internal/host"
 	"github.com/voocel/ainovel-cli/internal/host/exp"
+	"github.com/voocel/ainovel-cli/internal/i18n"
 )
 
 // exportDoneMsg 是 /export 命令的最终结果。
@@ -34,7 +35,7 @@ func startExport(rt *host.Host, args []string) (tea.Cmd, error) {
 	}, nil
 }
 
-// parseExportArgs 解析 `/export [path] [from=N] [to=M] [--overwrite]`。
+// parseExportArgs parses `/xuat [path] [from=N] [to=M] [ngonngu=vi|zh] [--overwrite]`.
 //
 // 位置参数：最多一个，作为输出路径；缺省由 exp.Run 决定（{novelDir}/{NovelName}.txt）。
 func parseExportArgs(args []string) (exp.Options, error) {
@@ -55,11 +56,20 @@ func parseExportArgs(args []string) (exp.Options, error) {
 			case "to":
 				n, err := strconv.Atoi(v)
 				if err != nil || n < 0 {
-					return exp.Options{}, fmt.Errorf("to 需为非负整数：%q", v)
+					return exp.Options{}, fmt.Errorf("to phải là số nguyên không âm: %q", v)
 				}
 				opts.To = n
+			case "language", "ngonngu":
+				switch strings.ToLower(v) {
+				case "zh", "trung", "trung-quoc":
+					opts.Language = exp.LanguageChinese
+				case "vi", "viet", "tieng-viet":
+					opts.Language = exp.LanguageVietnamese
+				default:
+					return exp.Options{}, fmt.Errorf("ngonngu phải là vi hoặc zh: %q", v)
+				}
 			default:
-				return exp.Options{}, fmt.Errorf("未知参数 %q（支持：from / to）", k)
+				return exp.Options{}, fmt.Errorf("tham số không xác định %q (hỗ trợ: from / to / ngonngu)", k)
 			}
 			continue
 		}
@@ -77,9 +87,9 @@ func parseExportArgs(args []string) (exp.Options, error) {
 // formatExportSuccess 把 Result 渲染成事件 Summary。
 func formatExportSuccess(res *exp.Result) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "✓ 已导出 %d 章 / %s 到 %s", res.Chapters, humanBytes(res.Bytes), res.Path)
+	fmt.Fprintf(&b, i18n.T("event.export_success"), res.Chapters, humanBytes(res.Bytes), res.Path)
 	if n := len(res.Skipped); n > 0 {
-		fmt.Fprintf(&b, "（跳过 %d 章未完成：%s）", n, briefIntList(res.Skipped, 5))
+		fmt.Fprintf(&b, i18n.T("event.export_skipped"), n, briefIntList(res.Skipped, 5))
 	}
 	return b.String()
 }

@@ -436,12 +436,15 @@ func TestConnectionTestCanBeCancelled(t *testing.T) {
 }
 
 func TestConfigCommandIsRegistered(t *testing.T) {
-	spec, ok := commandRegistryInstance().Find("config")
+	spec, ok := commandRegistryInstance().Find("cau-hinh")
 	if !ok {
-		t.Fatal("/config is not registered")
+		t.Fatal("/cau-hinh is not registered")
 	}
-	if spec.Usage != "/config" || !spec.AutoExecute {
+	if spec.Usage != "/cau-hinh" || !spec.AutoExecute {
 		t.Fatalf("config spec = %#v", spec)
+	}
+	if _, ok := commandRegistryInstance().Find("config"); !ok {
+		t.Fatal("legacy /config alias is not registered")
 	}
 }
 
@@ -464,8 +467,8 @@ func TestModelConfigModalIsCompactOverlay(t *testing.T) {
 	if len(lines) != 5 {
 		t.Fatalf("紧凑浮层应为 5 行（内容高度），得到 %d 行:\n%s", len(lines), strings.Join(lines, "\n"))
 	}
-	if !strings.Contains(lines[0], "┌") || !strings.Contains(lines[0], "/config") {
-		t.Fatalf("首行应是带 /config 标题的上边框，得到 %q", lines[0])
+	if !strings.Contains(lines[0], "┌") || !strings.Contains(lines[0], "/cau-hinh") {
+		t.Fatalf("首行应是带 /cau-hinh 标题的上边框，得到 %q", lines[0])
 	}
 	if !strings.Contains(lines[len(lines)-1], "└") {
 		t.Fatalf("末行应是下边框，得到 %q", lines[len(lines)-1])

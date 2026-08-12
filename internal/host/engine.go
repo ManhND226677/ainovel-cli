@@ -37,14 +37,15 @@ type engine struct {
 	// 异步执行——engine 只丢弃过期派单,不自行做残缺的重新裁定。
 	reconsult func(text string)
 
-	observer  *observer
-	budget    *BudgetSentinel
-	gate      *ChapterAdvanceGate
-	refresh   func() // 每次 writer 派发前刷新 RestorePack
-	emitEvent func(Event)
-	notify    func(kind, level, title, body string)
-	onPause   func(summary string) // 引擎自主暂停(僵局/失败裁定 abort):走 host 统一暂停语义(lifecycle=paused)
-	onDone    func()               // run 结束(任何原因);host 据 store 事实定终态
+	observer    *observer
+	budget      *BudgetSentinel
+	gate        *ChapterAdvanceGate
+	refresh     func()             // 每次 writer 派发前刷新 RestorePack
+	afterWorker func(agent string) // worker 完成后通知宿主的旁路观察钩子；不得改写 Flow
+	emitEvent   func(Event)
+	notify      func(kind, level, title, body string)
+	onPause     func(summary string) // 引擎自主暂停(僵局/失败裁定 abort):走 host 统一暂停语义(lifecycle=paused)
+	onDone      func()               // run 结束(任何原因);host 据 store 事实定终态
 
 	mu      sync.Mutex
 	wg      sync.WaitGroup
@@ -484,6 +485,9 @@ func (e *engine) runWorker(ctx context.Context, inst *flow.Instruction) error {
 		e.failedKey = ""
 	}
 	e.observer.dispatchFinish(inst.Agent, err)
+	if err == nil && e.afterWorker != nil {
+		e.afterWorker(inst.Agent)
+	}
 	return err
 }
 

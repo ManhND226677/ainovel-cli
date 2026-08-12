@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/voocel/ainovel-cli/internal/i18n"
 )
 
 type helpState struct {
@@ -30,7 +31,7 @@ func renderHelpText(width int) string {
 	hintStyle := lipgloss.NewStyle().Foreground(colorDim)
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("命令帮助"))
+	b.WriteString(titleStyle.Render(i18n.T("help.title")))
 	b.WriteString("\n\n")
 
 	for i, spec := range commandSpecs() {
@@ -39,24 +40,24 @@ func renderHelpText(width int) string {
 		}
 		b.WriteString(nameStyle.Render("/" + spec.Name))
 		if len(spec.Aliases) > 0 {
-			b.WriteString(usageStyle.Render("  alias: /" + strings.Join(spec.Aliases, " /")))
+			b.WriteString(usageStyle.Render("  " + i18n.T("help.alias") + ": /" + strings.Join(spec.Aliases, " /")))
 		}
 		b.WriteString("\n")
-		b.WriteString(usageStyle.Render("Usage: " + spec.Usage))
+		b.WriteString(usageStyle.Render(i18n.T("help.usage") + ": " + spec.Usage))
 		b.WriteString("\n")
 		b.WriteString(descStyle.Render(wrapText(spec.Description, width)))
 		b.WriteString("\n")
 	}
 
 	b.WriteString("\n")
-	b.WriteString(titleStyle.Render("快捷键"))
+	b.WriteString(titleStyle.Render(i18n.T("help.shortcuts")))
 	b.WriteString("\n\n")
 	for _, line := range []string{
-		"输入 / 搜索命令",
-		"↑↓ 选择命令候选",
-		"Tab/Enter 接受补全",
-		"Esc 关闭当前命令面板",
-		"Ctrl+R 切换选中复制模式（关闭鼠标上报后可拖拽选中复制，再按一次恢复）",
+		i18n.T("help.shortcut.search"),
+		i18n.T("help.shortcut.select"),
+		i18n.T("help.shortcut.complete"),
+		i18n.T("help.shortcut.close"),
+		i18n.T("help.shortcut.copy"),
 	} {
 		b.WriteString(hintStyle.Render(line))
 		b.WriteString("\n")
@@ -82,8 +83,8 @@ func renderHelpModal(width, height int, state *helpState) string {
 	modal := renderPaddedModalFrame(
 		boxW,
 		boxH,
-		"命令帮助",
-		"  ↑↓ 滚动 · Esc 关闭",
+		i18n.T("help.title"),
+		i18n.T("help.footer"),
 		strings.Split(state.viewport.View(), "\n"),
 	)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)

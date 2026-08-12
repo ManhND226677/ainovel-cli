@@ -6,9 +6,20 @@
 // 第一版只支持 TXT；EPUB 留待下一轮。
 package exp
 
-import "github.com/voocel/ainovel-cli/internal/store"
+import (
+	"github.com/voocel/ainovel-cli/internal/store"
+	"github.com/voocel/ainovel-cli/internal/translation"
+)
 
 // Format 标识导出格式。
+// Language identifies which committed artifact branch is exported.
+type Language string
+
+const (
+	LanguageChinese    Language = "zh"
+	LanguageVietnamese Language = "vi"
+)
+
 type Format string
 
 const (
@@ -24,6 +35,9 @@ const (
 // 含目标读者 / 核心消费点 / 写作禁区等后台元信息，给作者与引擎看，不是读者的序）；
 // 弧分隔（读者视角下弧是过细的内部结构）。书名与卷分隔始终保留。
 type Options struct {
+	// Language trống mặc định là zh để không thay đổi hành vi export hiện có.
+	Language Language
+
 	// Format 空字符串时由 OutPath 后缀推断（.txt → TXT，.epub → EPUB）；
 	// OutPath 也为空时回退 FormatTXT。SDK 调用方可显式指定以跳过推断。
 	Format Format
@@ -42,7 +56,8 @@ type Options struct {
 
 // Deps 是 Run 所需依赖。仅 store；导出无需 LLM、prompt、bundle。
 type Deps struct {
-	Store *store.Store
+	Store       *store.Store
+	Translation *translation.Store // chỉ cần khi Options.Language = vi
 }
 
 // Result 是一次成功导出的产物摘要。
