@@ -260,7 +260,7 @@ func TestProviderHubEditsBaseURLInlineAndKeepsLongTailVisible(t *testing.T) {
 	state.input.SetValue("  https://example.com/a/very/long/provider/path/UNIQUE-END  ")
 	state.input.CursorEnd()
 	view := renderModelConfigModal(76, state)
-	if !strings.Contains(view, "UNIQUE-END") {
+	if !strings.Contains(ansi.Strip(view), "UNIQUE-END") {
 		t.Fatalf("长 Base URL 编辑时应显示光标附近尾部:\n%s", view)
 	}
 	m.handleModelConfigKey(tea.KeyMsg{Type: tea.KeyEnter})
@@ -391,7 +391,7 @@ func TestProviderHubShowsConfigPathAndConnectionAction(t *testing.T) {
 			t.Fatalf("配置 Hub 缺少 %q:\n%s", want, view)
 		}
 	}
-	compact := strings.NewReplacer("\r", "", "\n", "", " ", "", "│", "").Replace(view)
+	compact := strings.NewReplacer("\r", "", "\n", "", " ", "", "│", "").Replace(ansi.Strip(view))
 	if !strings.Contains(compact, `C:\work\.ainovel\config.json`) {
 		t.Fatalf("配置 Hub 未完整展示配置路径:\n%s", view)
 	}
@@ -401,7 +401,7 @@ func TestModelConfigMessageWrapKeepsErrorTail(t *testing.T) {
 	state := &modelConfigState{step: configStepHub, provider: "proxy", apiKeyOptional: true,
 		message: "连接失败：" + strings.Repeat("上游返回了很长的错误信息", 8) + " UNIQUE-ERROR-TAIL"}
 	view := renderModelConfigModal(64, state)
-	compact := strings.NewReplacer("\r", "", "\n", "", " ", "", "│", "").Replace(view)
+	compact := strings.NewReplacer("\r", "", "\n", "", " ", "", "│", "").Replace(ansi.Strip(view))
 	if !strings.Contains(compact, "UNIQUE-ERROR-TAIL") {
 		t.Fatalf("长错误不应截断尾部:\n%s", view)
 	}

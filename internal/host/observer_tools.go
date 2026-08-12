@@ -3,11 +3,28 @@ package host
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/voocel/agentcore"
 )
+
+func decodeToolProgressMessage(msg string) string {
+	if decoded, err := strconv.Unquote(msg); err == nil {
+		return decoded
+	}
+	if !strings.HasPrefix(msg, `"`) {
+		return msg
+	}
+	// agentcore giới hạn payload theo byte nên JSON string có thể mất quote đóng.
+	// Thử đóng lại trước; nếu chuỗi kết thúc ở escape chưa hoàn chỉnh thì vẫn giữ phần
+	// có thể đọc được thay vì để dashboard hiển thị backslash/quote thô.
+	if decoded, err := strconv.Unquote(msg + `"`); err == nil {
+		return decoded
+	}
+	return strings.NewReplacer(`\n`, "\n", `\"`, `"`, `\\`, `\`).Replace(strings.TrimPrefix(msg, `"`))
+}
 
 // handleToolUpdate 处理 Worker 的进度中继(ProgressPayload):TOOL 行、流式正文、
 // thinking、retry、context。Engine 经 observer.workerProgress 喂入。
@@ -107,7 +124,7 @@ func (o *observer) handleToolUpdate(ev agentcore.Event) {
 		o.persistEvent(retryEv)
 	case agentcore.ProgressToolError:
 		delete(o.streamExtractors, ev.Progress.Agent)
-		msg := ev.Progress.Message
+		msg := decodeToolProgressMessage(ev.Progress.Message)
 		if msg == "" {
 			msg = "unknown error"
 		}

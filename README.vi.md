@@ -36,6 +36,18 @@ Mở dashboard web, đặt `VITE_ENGINE_API_URL=http://127.0.0.1:8090/api` khi c
 
 Khi API chưa chạy, dashboard hiển thị lỗi kết nối chi tiết, countdown tự nối lại và nút thử lại; trong thời gian WebSocket gián đoạn, frontend chuyển tạm sang polling thưa hơn để không mất trạng thái. Khi kết nối thành công, snapshot và nhật ký nhận event qua WebSocket, còn từng agent có trang chi tiết với context usage và lịch sử event. Mục **Bản dịch Việt** mở workspace batch: chọn nhiều chương `failed`/`stale`, nhấn **Retry** để tạo một job retry durable; thao tác này không ghi đè bản tiếng Trung.
 
+Dashboard cũng có biểu đồ tiến độ dịch theo event realtime, workspace **Lịch sử bản thảo** tại `/snapshots` và **Cài đặt Model AI** tại `/settings`. Snapshot là archive ZIP của thư mục output thực; khi khôi phục, engine luôn tạo một snapshot an toàn trước khi ghi lại file. Glossary được cập nhật theo nguyên tắc append-only: thuật ngữ đã chốt không thể bị ghi đè từ dashboard. Khóa API chỉ được gửi khi người dùng thay đổi nó, API không trả khóa đã lưu về trình duyệt.
+
+| Endpoint | Phương thức | Mục đích |
+|---|---:|---|
+| `/api/translation/glossary` | `GET`, `POST` | Đọc và bổ sung glossary durable trước khi retry batch |
+| `/api/snapshots` | `GET`, `POST` | Liệt kê hoặc tạo archive snapshot bản thảo |
+| `/api/snapshots/restore` | `POST` | Khôi phục snapshot; body bắt buộc có `{ "id": "…", "confirm": true }` |
+| `/api/settings/model` | `GET`, `POST` | Đọc, thử kết nối, lưu và áp dụng provider/model thật của engine |
+| `/api/translation/report` | `GET` | Xuất báo cáo Markdown hoặc TXT, tùy chọn `job_id` và `format` |
+
+Nếu khởi động API với token, các `POST` có tác động đến engine gồm retry batch, cập nhật glossary, tạo/khôi phục snapshot, cài đặt model và các endpoint `/api/engine/*` phải gửi `Authorization: Bearer <token>`. Các endpoint đọc vẫn hoạt động trên loopback để dashboard có thể hiển thị trạng thái.
+
 ## Các lệnh TUI tiếng Việt
 
 | Lệnh hiển thị | Bí danh cũ | Mục đích |

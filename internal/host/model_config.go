@@ -21,22 +21,22 @@ const (
 
 // ProviderSnapshot 是供 TUI 使用的脱敏 provider 配置。
 type ProviderSnapshot struct {
-	Name           string
-	Type           string
-	API            string
-	BaseURL        string
-	Models         []bootstrap.ModelConfig
-	HasAPIKey      bool
-	APIKeyHint     string
-	RequiresAPIKey bool
+	Name           string                  `json:"name"`
+	Type           string                  `json:"type"`
+	API            string                  `json:"api"`
+	BaseURL        string                  `json:"base_url"`
+	Models         []bootstrap.ModelConfig `json:"models"`
+	HasAPIKey      bool                    `json:"has_api_key"`
+	APIKeyHint     string                  `json:"api_key_hint"`
+	RequiresAPIKey bool                    `json:"requires_api_key"`
 }
 
 type ModelConfigurationSnapshot struct {
-	Providers       []ProviderSnapshot
-	DefaultProvider string
-	DefaultModel    string
-	ConfigPath      string
-	References      map[string][]string
+	Providers       []ProviderSnapshot  `json:"providers"`
+	DefaultProvider string              `json:"default_provider"`
+	DefaultModel    string              `json:"default_model"`
+	ConfigPath      string              `json:"config_path"`
+	References      map[string][]string `json:"references"`
 }
 
 func (s ModelConfigurationSnapshot) ReferencesFor(provider, model string) []string {

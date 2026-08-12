@@ -1,6 +1,7 @@
 package webapi
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -53,3 +54,70 @@ func TestLiveEventMapsAgentAndPriority(t *testing.T) {
 		t.Fatalf("liveEvent = %+v", got)
 	}
 }
+
+func TestTokenAuthMiddleware(t *testing.T) {
+	handler := withTokenAuth("secret-123", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+
+	// GET health nên được pass qua không cần token
+	reqGet, _ := http.NewRequest("GET", "/api/health", nil)
+	recGet := httptestNewRecorder()
+	handler.ServeHTTP(recGet, reqGet)
+	if recGet.Code != http.StatusOK {
+		t.Fatalf("GET /api/health should not require token, got %d", recGet.Code)
+	}
+
+	// Mọi POST control thiếu token phải trả 401, bao gồm các workspace quản trị mới.
+	for _, path := range []string{
+		"/api/engine/abort",
+		"/api/translation/retry",
+		"/api/translation/glossary",
+		"/api/snapshots",
+		"/api/snapshots/restore",
+		"/api/settings/model",
+	} {
+		reqPostNoAuth, _ := http.NewRequest("POST", path, nil)
+		recPostNoAuth := httptestNewRecorder()
+		handler.ServeHTTP(recPostNoAuth, reqPostNoAuth)
+		if recPostNoAuth.Code != http.StatusUnauthorized {
+			t.Fatalf("POST %s without token should return 401, got %d", path, recPostNoAuth.Code)
+		}
+	}
+
+	// Bearer token đúng phải cho phép toàn bộ POST control đi qua handler.
+	for _, path := range []string{
+		"/api/engine/abort",
+		"/api/translation/retry",
+		"/api/translation/glossary",
+		"/api/snapshots",
+		"/api/snapshots/restore",
+		"/api/settings/model",
+	} {
+		reqPostAuth, _ := http.NewRequest("POST", path, nil)
+		reqPostAuth.Header.Set("Authorization", "Bearer secret-123")
+		recPostAuth := httptestNewRecorder()
+		handler.ServeHTTP(recPostAuth, reqPostAuth)
+		if recPostAuth.Code != http.StatusOK {
+			t.Fatalf("POST %s with valid Bearer token should pass, got %d", path, recPostAuth.Code)
+		}
+	}
+}
+
+func httptestNewRecorder() *httptestResponseRecorder {
+	return &httptestResponseRecorder{HeaderMap: make(http.Header), Code: 200}
+}
+
+type httptestResponseRecorder struct {
+	HeaderMap http.Header
+	Body      []byte
+	Code      int
+}
+
+func (r *httptestResponseRecorder) Header() http.Header { return r.HeaderMap }
+func (r *httptestResponseRecorder) Write(b []byte) (int, error) {
+	r.Body = append(r.Body, b...)
+	return len(b), nil
+}
+func (r *httptestResponseRecorder) WriteHeader(statusCode int) { r.Code = statusCode }

@@ -17,8 +17,8 @@ package agents
 //     guard/stop_guard.go 的"物理不可停机"与超限升级依赖此语义。
 //  5. Runner.Run 的错误保持类型化链：未注册 agent 匹配 subagent.ErrUnknownAgent ——
 //     host/engine.go 的 isDeterministicWorkerError 依赖此分类而非错误文案。
-//  6. ProgressToolError 携带完整、已解码的错误文本——host 负责生成短 Summary，
-//     完整 Detail 与日志不得被框架展示策略截断。
+//  6. ProgressToolError là payload JSON literal có giới hạn độ dài (có thể mất quote
+//     đóng khi cắt); host giải mã phần an toàn trước khi phát event stream.
 
 import (
 	"context"
@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/voocel/agentcore"
 	"github.com/voocel/agentcore/subagent"
@@ -260,8 +261,8 @@ func TestContract_RunUnknownAgentIsTyped(t *testing.T) {
 	}
 }
 
-// 契约 6：进度中继是完整诊断的传输边界，不是 UI 展示层。
-func TestContract_ToolErrorProgressIsCompletePlainText(t *testing.T) {
+// 契约 6：progress relay giữ lỗi đọc được, giới hạn độ dài và không cắt giữa UTF-8 rune.
+func TestContract_ToolErrorProgressIsBoundedReadablePayload(t *testing.T) {
 	rawArgs := `{"chapter":1,"summary":"` + strings.Repeat("秦越在材料中发现线索", 30)
 	model := &contractModel{fn: func(i int, _ []agentcore.Message) (*agentcore.LLMResponse, error) {
 		if i == 0 {
@@ -294,13 +295,13 @@ func TestContract_ToolErrorProgressIsCompletePlainText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(progressError) <= 200 {
-		t.Fatalf("ProgressToolError 不得截断，got %d bytes", len(progressError))
+	if len(progressError) > 200 {
+		t.Fatalf("ProgressToolError 应限制为不超过 200 bytes，got %d", len(progressError))
 	}
-	if !strings.HasPrefix(progressError, "tool argument validation failed:") {
-		t.Fatalf("ProgressToolError 应为解码后的纯文本，got %q", progressError)
+	if !utf8.ValidString(progressError) {
+		t.Fatalf("ProgressToolError 不得截断 UTF-8 rune，got %q", progressError)
 	}
-	if !strings.Contains(progressError, "\nraw args: "+rawArgs) {
-		t.Fatalf("ProgressToolError 丢失完整 raw args: %q", progressError)
+	if !strings.Contains(progressError, "tool argument validation failed:") {
+		t.Fatalf("ProgressToolError 应保留错误前缀，got %q", progressError)
 	}
 }

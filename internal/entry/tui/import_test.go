@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/voocel/ainovel-cli/internal/host/imp"
 )
@@ -60,8 +61,9 @@ func TestRenderImportLineWrapsWithoutClipping(t *testing.T) {
 			return r
 		}, s)
 	}
+	plain := ansi.Strip(out)
 	for _, want := range []string{"HTTP 400", "openrouter", "gateway message tail"} {
-		if !strings.Contains(norm(out), norm(want)) {
+		if !strings.Contains(norm(plain), norm(want)) {
 			t.Fatalf("行内容缺少 %q：%q", want, out)
 		}
 	}

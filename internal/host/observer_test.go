@@ -3,6 +3,7 @@ package host
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -178,7 +179,7 @@ func TestObserverToolErrorUpdatesSingleToolEventWithFullDetail(t *testing.T) {
 			Kind:    agentcore.ProgressToolError,
 			Agent:   "writer",
 			Tool:    "edit_chapter",
-			Message: fullError,
+			Message: strconv.Quote(fullError),
 		},
 	})
 
@@ -195,5 +196,14 @@ func TestObserverToolErrorUpdatesSingleToolEventWithFullDetail(t *testing.T) {
 	}
 	if len(failed.Summary) >= len(failed.Detail) {
 		t.Fatalf("UI Summary 应短于完整 Detail: summary=%d detail=%d", len(failed.Summary), len(failed.Detail))
+	}
+}
+
+func TestDecodeToolProgressMessageHandlesTruncatedJSONLiteral(t *testing.T) {
+	raw := strconv.Quote("tool argument validation failed: malformed payload\nraw args: long input")
+	truncated := strings.TrimSuffix(raw, `"`)
+	got := decodeToolProgressMessage(truncated)
+	if !strings.HasPrefix(got, "tool argument validation failed:") || !strings.Contains(got, "\nraw args:") {
+		t.Fatalf("truncated JSON literal should remain readable, got %q", got)
 	}
 }

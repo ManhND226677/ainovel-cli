@@ -18,7 +18,7 @@ func TestAdvanceCommandsAreRegistered(t *testing.T) {
 		t.Fatalf("/next should be an idle one-shot command: %+v", next)
 	}
 	items := builtinCommandItems()
-	if !hasPaletteItem(items, "review") || !hasPaletteItem(items, "next") {
+	if !hasPaletteItem(items, "duyet") || !hasPaletteItem(items, "tiep-tuc") {
 		t.Fatalf("advance commands missing from palette: %+v", items)
 	}
 }

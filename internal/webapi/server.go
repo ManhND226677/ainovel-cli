@@ -15,7 +15,8 @@ import (
 // Options configures the local dashboard API. It intentionally binds to
 // loopback by default because the API can control the local writing engine.
 type Options struct {
-	Addr string
+	Addr  string
+	Token string
 }
 
 // Server exposes read-only telemetry plus the minimal lifecycle controls the
@@ -31,7 +32,11 @@ func (s *Server) Serve(opts Options) error {
 	if addr == "" {
 		addr = "127.0.0.1:8090"
 	}
-	server := &http.Server{Addr: addr, Handler: withCORS(s.routes())}
+	handler := s.routes()
+	if opts.Token != "" {
+		handler = withTokenAuth(opts.Token, handler)
+	}
+	server := &http.Server{Addr: addr, Handler: withCORS(handler)}
 	fmt.Printf("Local dashboard API đang chạy tại http://%s/api/\n", addr)
 	return server.ListenAndServe()
 }
@@ -45,6 +50,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/agents/", s.agent)
 	mux.HandleFunc("/api/translation/status", s.translationStatus)
 	mux.HandleFunc("/api/translation/retry", s.translationRetry)
+	mux.HandleFunc("/api/translation/report", s.translationReport)
+	mux.HandleFunc("/api/translation/glossary", s.translationGlossaryManagement)
+	mux.HandleFunc("/api/snapshots", s.manuscriptSnapshots)
+	mux.HandleFunc("/api/snapshots/restore", s.restoreManuscriptSnapshot)
+	mux.HandleFunc("/api/settings/model", s.modelSettingsManagement)
 	mux.HandleFunc("/api/engine/start", s.start)
 	mux.HandleFunc("/api/engine/resume", s.resume)
 	mux.HandleFunc("/api/engine/continue", s.continueEngine)
@@ -346,10 +356,36 @@ func lastSeq(items []eventResponse) int64 {
 	return items[len(items)-1].Seq
 }
 
+func withTokenAuth(token string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Chỉ yêu cầu token đối với các action thay đổi trạng thái / điều khiển
+		path := r.URL.Path
+		isControlAction := strings.HasPrefix(path, "/api/engine/") ||
+			(r.Method == http.MethodPost && (path == "/api/translation/retry" ||
+				path == "/api/translation/glossary" || path == "/api/snapshots" ||
+				path == "/api/snapshots/restore" || path == "/api/settings/model"))
+		if isControlAction {
+			authHeader := r.Header.Get("Authorization")
+			queryToken := r.URL.Query().Get("token")
+			provided := ""
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				provided = strings.TrimPrefix(authHeader, "Bearer ")
+			} else if queryToken != "" {
+				provided = queryToken
+			}
+			if provided != token {
+				writeError(w, http.StatusUnauthorized, "Unauthorized: invalid or missing control token")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
