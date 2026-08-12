@@ -2,6 +2,7 @@ package translation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -141,6 +142,67 @@ func (c *Controller) Retry(ctx context.Context, chapters []int) error {
 		return err
 	}
 	c.report("info", fmt.Sprintf("Đã xếp lại lô retry chương %s", formatChapters(job.Chapters)))
+	return c.executeJob(ctx, job, sources)
+}
+
+// RunFullQueue persists every currently eligible, untranslated chapter as
+// pending and then executes the queue in ascending chapter order with a bounded
+// worker pool. Chinese source files remain read-only throughout the workflow.
+func (c *Controller) RunFullQueue(ctx context.Context) error {
+	if c == nil || !c.Policy.Enabled {
+		return fmt.Errorf("translation is not enabled")
+	}
+	if c.Store == nil || c.Source == nil {
+		return fmt.Errorf("translation controller requires store and source reader")
+	}
+	c.mu.Lock()
+	if c.running {
+		c.mu.Unlock()
+		return fmt.Errorf("translation scheduler is already running")
+	}
+	c.running = true
+	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		c.running = false
+		c.mu.Unlock()
+	}()
+
+	snapshot, sources, err := c.collectSnapshot("dashboard_full_queue")
+	if err != nil {
+		return err
+	}
+	status, err := c.Store.LoadStatus()
+	if err != nil {
+		return err
+	}
+	policy := c.Policy.Normalize()
+	eligible := snapshot.eligible(false)
+	chapters := make([]int, 0, len(eligible))
+	for chapter := range eligible {
+		record, exists := status.Chapters[chapter]
+		if exists && record.State == ChapterCompleted && record.SourceSHA256 == sources[chapter].SHA256 {
+			continue
+		}
+		if exists && record.Attempts >= policy.MaxRetries {
+			continue
+		}
+		chapters = append(chapters, chapter)
+	}
+	sort.Ints(chapters)
+	if len(chapters) == 0 {
+		c.report("success", "Hàng đợi dịch đã hoàn tất; không còn chương đủ điều kiện cần dịch")
+		return nil
+	}
+	job, err := c.Store.QueueJob(Decision{
+		Action:   DecisionTranslate,
+		Chapters: chapters,
+		Reason:   "Dashboard yêu cầu dịch tuần tự toàn bộ chương chưa có bản Việt",
+	}, sources)
+	if err != nil {
+		return err
+	}
+	c.report("info", fmt.Sprintf("Đã xếp hàng %d chương dịch; tối đa %d worker song song", len(chapters), policy.MaxConcurrentBatches))
 	return c.executeJob(ctx, job, sources)
 }
 
@@ -306,64 +368,40 @@ func (c *Controller) executeJob(ctx context.Context, job Job, sources map[int]So
 	if err := c.Store.UpdateJob(job); err != nil {
 		return err
 	}
+	workerCount := min(c.Policy.Normalize().MaxConcurrentBatches, len(job.Chapters))
+	chapters := make(chan int)
+	failures := make(chan error, len(job.Chapters))
+	var wg sync.WaitGroup
+	for range workerCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for chapter := range chapters {
+				if err := c.executeChapter(ctx, job, chapter, sources); err != nil {
+					failures <- err
+				}
+			}
+		}()
+	}
 	for _, chapter := range job.Chapters {
-		if err := ctx.Err(); err != nil {
-			job.State, job.LastError = JobCancelled, err.Error()
-			_ = c.Store.UpdateJob(job)
-			return err
-		}
-		source, ok := sources[chapter]
-		if !ok {
-			job.State, job.LastError = JobFailed, fmt.Sprintf("source chapter %d is unavailable", chapter)
-			_ = c.Store.UpdateJob(job)
-			return fmt.Errorf("%s", job.LastError)
-		}
-		status, err := c.Store.LoadStatus()
-		if err != nil {
-			return err
-		}
-		record := status.Chapters[chapter]
-		if record.State == ChapterCompleted && record.SourceSHA256 == source.SHA256 {
-			continue // resume is idempotent for chapters that committed before interruption
-		}
-		if record.Attempts >= c.Policy.Normalize().MaxRetries {
-			return c.fail(job, chapter, fmt.Errorf("chapter %d exceeded translation retry limit", chapter))
-		}
-		if err := c.Store.StartChapter(job.ID, source); err != nil {
-			job.State, job.LastError = JobFailed, err.Error()
-			_ = c.Store.UpdateJob(job)
-			return err
-		}
-		glossary, err := c.Store.LoadGlossary()
-		if err != nil {
-			return c.fail(job, chapter, err)
-		}
-		previous, _ := c.previousTranslation(chapter)
-		translated, err := Translate(ctx, c.TranslatorModel, c.TranslatorPrompt, TranslationRequest{
-			Chapter:            chapter,
-			ChineseText:        source.Text,
-			Glossary:           glossary.Terms,
-			PreviousVietnamese: previous,
-		})
-		if err != nil {
-			return c.fail(job, chapter, err)
-		}
-		current, err := c.Source.LoadCommittedChapter(chapter)
-		if err != nil {
-			return c.fail(job, chapter, err)
-		}
-		if Digest(current) != source.SHA256 {
-			_ = c.Store.MarkStale(chapter, Digest(current))
-			return c.fail(job, chapter, fmt.Errorf("source chapter %d changed during translation", chapter))
-		}
-		updatedGlossary, err := c.Store.MergeGlossary(chapter, translated.Glossary)
-		if err != nil {
-			return c.fail(job, chapter, err)
-		}
-		if _, err := c.Store.CommitChapter(source, translated.Text, c.TranslatorMeta.Provider, c.TranslatorMeta.Name, job.ID, updatedGlossary.Version); err != nil {
-			return c.fail(job, chapter, err)
-		}
-		c.report("info", fmt.Sprintf("Đã dịch xong chương %d (job %s)", chapter, job.ID))
+		chapters <- chapter
+	}
+	close(chapters)
+	wg.Wait()
+	close(failures)
+	var errs []error
+	for err := range failures {
+		errs = append(errs, err)
+	}
+	if ctx.Err() != nil {
+		job.State, job.LastError = JobCancelled, ctx.Err().Error()
+		_ = c.Store.UpdateJob(job)
+		return ctx.Err()
+	}
+	if len(errs) > 0 {
+		job.State, job.LastError = JobFailed, errs[0].Error()
+		_ = c.Store.UpdateJob(job)
+		return errors.Join(errs...)
 	}
 	job.State = JobCompleted
 	job.LastError = ""
@@ -374,11 +412,60 @@ func (c *Controller) executeJob(ctx context.Context, job Job, sources map[int]So
 	return nil
 }
 
-func (c *Controller) fail(job Job, chapter int, err error) error {
+func (c *Controller) executeChapter(ctx context.Context, job Job, chapter int, sources map[int]SourceChapter) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	source, ok := sources[chapter]
+	if !ok {
+		return c.failChapter(job, chapter, fmt.Errorf("source chapter %d is unavailable", chapter))
+	}
+	status, err := c.Store.LoadStatus()
+	if err != nil {
+		return err
+	}
+	record := status.Chapters[chapter]
+	if record.State == ChapterCompleted && record.SourceSHA256 == source.SHA256 {
+		return nil
+	}
+	if record.Attempts >= c.Policy.Normalize().MaxRetries {
+		return c.failChapter(job, chapter, fmt.Errorf("chapter %d exceeded translation retry limit", chapter))
+	}
+	if err := c.Store.StartChapter(job.ID, source); err != nil {
+		return c.failChapter(job, chapter, err)
+	}
+	glossary, err := c.Store.LoadGlossary()
+	if err != nil {
+		return c.failChapter(job, chapter, err)
+	}
+	previous, _ := c.previousTranslation(chapter)
+	translated, err := Translate(ctx, c.TranslatorModel, c.TranslatorPrompt, TranslationRequest{
+		Chapter: chapter, ChineseText: source.Text, Glossary: glossary.Terms, PreviousVietnamese: previous,
+	})
+	if err != nil {
+		return c.failChapter(job, chapter, err)
+	}
+	current, err := c.Source.LoadCommittedChapter(chapter)
+	if err != nil {
+		return c.failChapter(job, chapter, err)
+	}
+	if Digest(current) != source.SHA256 {
+		_ = c.Store.MarkStale(chapter, Digest(current))
+		return c.failChapter(job, chapter, fmt.Errorf("source chapter %d changed during translation", chapter))
+	}
+	updatedGlossary, err := c.Store.MergeGlossary(chapter, translated.Glossary)
+	if err != nil {
+		return c.failChapter(job, chapter, err)
+	}
+	if _, err := c.Store.CommitChapter(source, translated.Text, c.TranslatorMeta.Provider, c.TranslatorMeta.Name, job.ID, updatedGlossary.Version); err != nil {
+		return c.failChapter(job, chapter, err)
+	}
+	c.report("info", fmt.Sprintf("Đã dịch xong chương %d (job %s)", chapter, job.ID))
+	return nil
+}
+
+func (c *Controller) failChapter(job Job, chapter int, err error) error {
 	_ = c.Store.FailChapter(job.ID, chapter, err)
-	job.State = JobFailed
-	job.LastError = err.Error()
-	_ = c.Store.UpdateJob(job)
 	c.report("error", fmt.Sprintf("Dịch chương %d thất bại; có thể tiếp tục lại: %v", chapter, err))
 	return err
 }

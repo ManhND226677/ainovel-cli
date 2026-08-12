@@ -1,9 +1,15 @@
 package translation
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/voocel/agentcore"
 )
 
 func testSnapshot() Snapshot {
@@ -72,6 +78,138 @@ func TestTranslationStoreCommitIsIsolatedAndMarksStale(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(bookDir, "translations", "vi", "chapters", "01.md")); err != nil {
 		t.Fatalf("translation artifact missing: %v", err)
+	}
+}
+
+func TestQueueJobMarksWholeBacklogPending(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	sources := map[int]SourceChapter{
+		1: NewSourceChapter(1, "第一章"),
+		2: NewSourceChapter(2, "第二章"),
+		3: NewSourceChapter(3, "第三章"),
+	}
+	job, err := store.QueueJob(Decision{Action: DecisionTranslate, Chapters: []int{1, 2, 3}, Reason: "toàn bộ backlog"}, sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := store.LoadStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, chapter := range job.Chapters {
+		record := status.Chapters[chapter]
+		if record.State != ChapterPending || record.JobID != job.ID || record.SourceSHA256 != sources[chapter].SHA256 {
+			t.Fatalf("chapter %d was not queued as durable pending: %+v", chapter, record)
+		}
+	}
+}
+
+type retryPoolSource struct{ texts map[int]string }
+
+func (s retryPoolSource) CompletedChapters() ([]int, error) { return []int{1, 2, 3}, nil }
+func (s retryPoolSource) PendingRewrites() ([]int, error)   { return nil, nil }
+func (s retryPoolSource) IsBookCompleted() (bool, error)    { return true, nil }
+func (s retryPoolSource) LoadCommittedChapter(chapter int) (string, error) {
+	return s.texts[chapter], nil
+}
+
+type retryPoolModel struct {
+	active atomic.Int32
+	max    atomic.Int32
+}
+
+func (m *retryPoolModel) Generate(_ context.Context, _ []agentcore.Message, _ []agentcore.ToolSpec, _ ...agentcore.CallOption) (*agentcore.LLMResponse, error) {
+	active := m.active.Add(1)
+	for {
+		current := m.max.Load()
+		if active <= current || m.max.CompareAndSwap(current, active) {
+			break
+		}
+	}
+	time.Sleep(20 * time.Millisecond)
+	m.active.Add(-1)
+	return &agentcore.LLMResponse{Message: agentcore.Message{
+		Role:       agentcore.RoleAssistant,
+		Content:    []agentcore.ContentBlock{agentcore.TextBlock(`{"text":"Bản dịch thử","glossary":[]}`)},
+		StopReason: agentcore.StopReasonStop,
+	}}, nil
+}
+
+func (m *retryPoolModel) GenerateStream(ctx context.Context, msgs []agentcore.Message, tools []agentcore.ToolSpec, options ...agentcore.CallOption) (<-chan agentcore.StreamEvent, error) {
+	response, err := m.Generate(ctx, msgs, tools, options...)
+	if err != nil {
+		return nil, err
+	}
+	stream := make(chan agentcore.StreamEvent, 1)
+	stream <- agentcore.StreamEvent{Type: agentcore.StreamEventDone, Message: response.Message, StopReason: response.Message.StopReason}
+	close(stream)
+	return stream, nil
+}
+
+func (m *retryPoolModel) SupportsTools() bool { return true }
+
+func TestRetryRunsWithWorkerPoolAndPreservesSource(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	sourceTexts := map[int]string{1: "第一章：风起", 2: "第二章：雨落", 3: "第三章：云开"}
+	sources := make(map[int]SourceChapter, len(sourceTexts))
+	for chapter, text := range sourceTexts {
+		sources[chapter] = NewSourceChapter(chapter, text)
+	}
+	initial, err := store.QueueJob(Decision{Action: DecisionTranslate, Chapters: []int{1, 2, 3}, Reason: "initial failure"}, sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for chapter, source := range sources {
+		if err := store.StartChapter(initial.ID, source); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.FailChapter(initial.ID, chapter, errors.New("temporary provider error")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	initial.State = JobFailed
+	if err := store.UpdateJob(initial); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkStale(2, Digest("第二章：旧版本")); err != nil {
+		t.Fatal(err)
+	}
+	beforeRetry, err := store.LoadStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if beforeRetry.Chapters[2].State != ChapterStale {
+		t.Fatalf("chapter 2 state = %s, want stale before retry", beforeRetry.Chapters[2].State)
+	}
+	model := &retryPoolModel{}
+	controller := &Controller{
+		Store: store, Source: retryPoolSource{texts: sourceTexts}, TranslatorModel: model,
+		Policy: Policy{Enabled: true, MaxBatchChapters: 3, MaxConcurrentBatches: 3, MaxRetries: 3},
+	}
+	if err := controller.Retry(context.Background(), []int{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	if model.max.Load() < 2 {
+		t.Fatalf("retry worker pool did not run concurrently; max active = %d", model.max.Load())
+	}
+	status, err := store.LoadStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for chapter, original := range sourceTexts {
+		record := status.Chapters[chapter]
+		if record.State != ChapterCompleted || record.SourceSHA256 != Digest(original) {
+			t.Fatalf("retry chapter %d = %+v, want completed and original fingerprint", chapter, record)
+		}
+		if got, err := controller.Source.LoadCommittedChapter(chapter); err != nil || got != original {
+			t.Fatalf("retry changed Chinese source chapter %d: got=%q err=%v", chapter, got, err)
+		}
 	}
 }
 

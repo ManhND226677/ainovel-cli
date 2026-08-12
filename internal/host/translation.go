@@ -128,7 +128,13 @@ func (h *Host) RequestTranslation() error {
 	if h.translation == nil || !h.translation.Policy.Enabled {
 		return fmt.Errorf("translation is not enabled for this book")
 	}
-	h.triggerTranslation("user_request")
+	if !h.launchAsync(func() {
+		if err := h.translation.RunFullQueue(h.runCtx); err != nil && h.runCtx.Err() == nil {
+			h.emitTranslationEvent(Event{Time: time.Now(), Category: "ERROR", Level: "error", Summary: "Không thể chạy hàng đợi dịch: " + err.Error(), Detail: err.Error()})
+		}
+	}) {
+		return fmt.Errorf("Host đang đóng, không thể khởi động hàng đợi dịch")
+	}
 	return nil
 }
 
