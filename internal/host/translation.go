@@ -79,9 +79,21 @@ func (h *Host) triggerTranslation(trigger string) {
 	ctx := h.runCtx
 	h.launchAsync(func() {
 		if err := controller.Run(ctx, trigger); err != nil && ctx.Err() == nil {
-			h.emitEvent(Event{Time: time.Now(), Category: "ERROR", Level: "error", Summary: "Agent điều phối/dịch gặp lỗi: " + err.Error()})
+			h.emitTranslationEvent(Event{Time: time.Now(), Category: "ERROR", Level: "error", Summary: "Agent điều phối/dịch gặp lỗi: " + err.Error()})
 		}
 	})
+}
+
+func (h *Host) emitTranslationEvent(event Event) {
+	if event.Agent == "" {
+		event.Agent = "translation_coordinator"
+	}
+	h.emitEvent(event)
+	// Translation Controller không đi qua agentcore observer. Persist event tại
+	// đây để /api/events và WebSocket replay có cùng lịch sử với worker khác.
+	if h.observer != nil {
+		h.observer.persistEvent(event)
+	}
 }
 
 func translationReporter(h *Host) translation.Reporter {
@@ -95,7 +107,7 @@ func translationReporter(h *Host) translation.Reporter {
 		case "success":
 			eventLevel = "success"
 		}
-		h.emitEvent(Event{Time: time.Now(), Category: "TRANSLATION", Level: eventLevel, Summary: summary})
+		h.emitTranslationEvent(Event{Time: time.Now(), Category: "TRANSLATION", Level: eventLevel, Summary: summary})
 	}
 }
 
@@ -141,9 +153,9 @@ func (h *Host) RetryTranslations(chapters []int) error {
 		return fmt.Errorf("retry requires at least one chapter")
 	}
 	if !h.launchAsync(func() {
-		h.emitEvent(Event{Time: time.Now(), Agent: "translation_coordinator", Category: "TRANSLATION", Level: "info", Summary: fmt.Sprintf("Dashboard yêu cầu retry %d chương dịch", len(chapters))})
+		h.emitTranslationEvent(Event{Time: time.Now(), Category: "TRANSLATION", Level: "info", Summary: fmt.Sprintf("Dashboard yêu cầu retry %d chương dịch", len(chapters))})
 		if err := h.translation.Retry(h.runCtx, chapters); err != nil && h.runCtx.Err() == nil {
-			h.emitEvent(Event{Time: time.Now(), Agent: "translation_coordinator", Category: "ERROR", Level: "error", Summary: "Retry batch dịch thất bại: " + err.Error(), Detail: err.Error()})
+			h.emitTranslationEvent(Event{Time: time.Now(), Category: "ERROR", Level: "error", Summary: "Retry batch dịch thất bại: " + err.Error(), Detail: err.Error()})
 		}
 	}) {
 		return fmt.Errorf("Host đang đóng, không thể retry batch dịch")

@@ -212,6 +212,11 @@ func mergeConfig(base, overlay Config) Config {
 	if overlay.Notify.Enabled != nil || overlay.Notify.Command != "" || len(overlay.Notify.Events) > 0 {
 		base.Notify = overlay.Notify
 	}
+	// Translation: policy của từng tác phẩm độc lập với cấu hình global; khi project
+	// khai báo một block không rỗng, nó phải được Host nhận ở lần khởi động kế tiếp.
+	if overlay.Translation != (TranslationConfig{}) {
+		base.Translation = overlay.Translation
+	}
 
 	return base
 }

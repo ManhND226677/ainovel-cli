@@ -1,7 +1,9 @@
 package webapi
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,6 +50,21 @@ func TestRuntimeEventPreservesDiagnostics(t *testing.T) {
 	}
 }
 
+func TestRuntimeEventSerializesPersistedTranslationAgent(t *testing.T) {
+	item := domain.RuntimeQueueItem{
+		Seq: 45, Time: time.Date(2026, 8, 12, 9, 0, 0, 0, time.UTC),
+		Agent: "translation_coordinator", Category: "TRANSLATION", Summary: "Hoàn tất lô dịch chương 2",
+		Payload: map[string]any{"level": "success"},
+	}
+	encoded, err := json.Marshal(runtimeEvent(item))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"agent":"Translation Agent"`) {
+		t.Fatalf("serialized translation event lost agent: %s", encoded)
+	}
+}
+
 func TestLiveEventMapsAgentAndPriority(t *testing.T) {
 	got := liveEvent(host.Event{Time: time.Now(), Agent: "translation_coordinator", Category: "ERROR", Level: "error", Summary: "batch failed"})
 	if got.Agent != "Translation Agent" || got.Priority != "control" || got.Level != "error" {
@@ -72,6 +89,7 @@ func TestTokenAuthMiddleware(t *testing.T) {
 	// Mọi POST control thiếu token phải trả 401, bao gồm các workspace quản trị mới.
 	for _, path := range []string{
 		"/api/engine/abort",
+		"/api/translation/request",
 		"/api/translation/retry",
 		"/api/translation/glossary",
 		"/api/snapshots",
@@ -89,6 +107,7 @@ func TestTokenAuthMiddleware(t *testing.T) {
 	// Bearer token đúng phải cho phép toàn bộ POST control đi qua handler.
 	for _, path := range []string{
 		"/api/engine/abort",
+		"/api/translation/request",
 		"/api/translation/retry",
 		"/api/translation/glossary",
 		"/api/snapshots",

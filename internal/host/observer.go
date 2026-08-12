@@ -225,6 +225,8 @@ func (o *observer) persistEvent(ev Event) {
 		Time:     ev.Time,
 		Kind:     domain.RuntimeQueueUIEvent,
 		Priority: priority,
+		TaskID:   ev.ID,
+		Agent:    ev.Agent,
 		Category: ev.Category,
 		Summary:  ev.Summary,
 		Payload:  ev,

@@ -77,6 +77,28 @@ func TestLoadConfig_CorruptGlobalDoesNotBlockProjectOverride(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_ProjectTranslationPolicyOverridesGlobal(t *testing.T) {
+	writeGlobal(t, validGlobal)
+	proj := t.TempDir()
+	t.Chdir(proj)
+	writeProjectConfig(t, `{
+  "translation": {
+    "enabled": true,
+    "min_stable_chapters": 1,
+    "max_batch_chapters": 1,
+    "max_concurrent_batches": 1
+  }
+}`)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if !cfg.Translation.Enabled || cfg.Translation.MaxBatchChapters != 1 || cfg.Translation.MaxConcurrentBatches != 1 {
+		t.Fatalf("project translation policy was not merged: %+v", cfg.Translation)
+	}
+}
+
 // 就近编辑：项目目录有 ./.ainovel/config.json 时 EffectiveConfigPath 指向它（绝对路径），
 // 否则回落全局——/config 与 /model 都据此决定写盘位置。
 func TestEffectiveConfigPathPrefersProject(t *testing.T) {

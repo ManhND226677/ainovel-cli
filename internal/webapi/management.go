@@ -14,6 +14,21 @@ type managementGlossaryRequest struct {
 	Entries map[string]string `json:"entries"`
 }
 
+func (s *Server) translationRequest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if err := s.runtime.RequestTranslation(); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"ok":      true,
+		"message": "Translation Coordinator đang đánh giá các chương đã chốt để mở lô dịch.",
+	})
+}
+
 func (s *Server) translationGlossaryManagement(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:

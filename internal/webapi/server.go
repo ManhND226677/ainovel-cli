@@ -49,6 +49,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/ws", s.websocket)
 	mux.HandleFunc("/api/agents/", s.agent)
 	mux.HandleFunc("/api/translation/status", s.translationStatus)
+	mux.HandleFunc("/api/translation/request", s.translationRequest)
 	mux.HandleFunc("/api/translation/retry", s.translationRetry)
 	mux.HandleFunc("/api/translation/report", s.translationReport)
 	mux.HandleFunc("/api/translation/glossary", s.translationGlossaryManagement)
@@ -361,7 +362,7 @@ func withTokenAuth(token string, next http.Handler) http.Handler {
 		// Chỉ yêu cầu token đối với các action thay đổi trạng thái / điều khiển
 		path := r.URL.Path
 		isControlAction := strings.HasPrefix(path, "/api/engine/") ||
-			(r.Method == http.MethodPost && (path == "/api/translation/retry" ||
+			(r.Method == http.MethodPost && (path == "/api/translation/request" || path == "/api/translation/retry" ||
 				path == "/api/translation/glossary" || path == "/api/snapshots" ||
 				path == "/api/snapshots/restore" || path == "/api/settings/model"))
 		if isControlAction {
