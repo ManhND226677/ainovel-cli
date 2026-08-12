@@ -24,6 +24,18 @@ go run ./cmd/ainovel-cli
 
 Để chạy không có TUI, dùng `--headless` và cung cấp prompt qua `--prompt` hoặc `--prompt-file`. Lần cấu hình đầu tiên cần chạy TUI một lần.
 
+### Dashboard web và API local
+
+Dashboard web đọc snapshot agent và runtime event trực tiếp từ Host Go qua API loopback. Sau khi cấu hình provider/model, chạy API bằng:
+
+```bash
+go run ./cmd/ainovel-cli web --addr 127.0.0.1:8090
+```
+
+Mở dashboard web, đặt `VITE_ENGINE_API_URL=http://127.0.0.1:8090/api` khi chạy frontend. API cung cấp `/api/state`, `/api/events`, `/api/agents/{role}`, cùng các route điều khiển `POST /api/engine/start`, `/resume`, `/continue` và `/abort`. API chỉ bind loopback mặc định vì các route điều khiển có thể tác động trực tiếp đến engine; không nên public port này ra Internet nếu chưa thêm xác thực.
+
+Khi API chưa chạy, dashboard hiển thị trạng thái **Chưa kết nối engine Go local** và dùng dữ liệu mẫu để người dùng vẫn xem được bố cục. Khi kết nối thành công, snapshot và nhật ký được polling tự động, còn từng agent có trang chi tiết với context usage và lịch sử event.
+
 ## Các lệnh TUI tiếng Việt
 
 | Lệnh hiển thị | Bí danh cũ | Mục đích |

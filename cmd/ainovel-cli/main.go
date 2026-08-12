@@ -15,6 +15,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/i18n"
 	"github.com/voocel/ainovel-cli/internal/rules"
 	buildversion "github.com/voocel/ainovel-cli/internal/version"
+	"github.com/voocel/ainovel-cli/internal/webapi"
 )
 
 var (
@@ -119,6 +120,15 @@ func runWithConfig(cfg bootstrap.Config, opts cliOptions, args []string) {
 		}
 		return
 	}
+	if opts.Web {
+		if opts.Prompt != "" || opts.PromptFile != "" {
+			die("web không nhận --prompt; hãy khởi chạy sáng tác từ trình duyệt")
+		}
+		if err := webapi.Run(cfg, bundle, opts.WebAddr); err != nil {
+			die("web: %v", err)
+		}
+		return
+	}
 	if opts.Prompt != "" || opts.PromptFile != "" {
 		die("Lỗi: %s", i18n.T("cli.error_prompt_headless"))
 	}
@@ -129,6 +139,8 @@ func runWithConfig(cfg bootstrap.Config, opts cliOptions, args []string) {
 
 type cliOptions struct {
 	Headless      bool
+	Web           bool
+	WebAddr       string
 	Prompt        string
 	PromptFile    string
 	Version       bool
@@ -166,6 +178,14 @@ func parseCLIOptions(argv []string) (cliOptions, []string, error) {
 			}
 		case "--headless":
 			opts.Headless = true
+		case "web", "--web":
+			opts.Web = true
+		case "--addr":
+			if i+1 >= len(argv) {
+				return opts, nil, fmt.Errorf("--addr thiếu giá trị")
+			}
+			opts.WebAddr = argv[i+1]
+			i++
 		case "--prompt":
 			if i+1 >= len(argv) {
 				return opts, nil, fmt.Errorf("--prompt 缺少值")
@@ -185,10 +205,10 @@ func parseCLIOptions(argv []string) (cliOptions, []string, error) {
 	if opts.Prompt != "" && opts.PromptFile != "" {
 		return opts, nil, fmt.Errorf("--prompt 和 --prompt-file 不能同时使用")
 	}
-	if opts.Version && (opts.Update || opts.Headless || opts.Prompt != "" || opts.PromptFile != "" || len(args) > 0) {
+	if opts.Version && (opts.Update || opts.Headless || opts.Web || opts.Prompt != "" || opts.PromptFile != "" || len(args) > 0) {
 		return opts, nil, fmt.Errorf("version 不能与其他启动参数混用")
 	}
-	if opts.Update && (opts.Headless || opts.Prompt != "" || opts.PromptFile != "" || len(args) > 0) {
+	if opts.Update && (opts.Headless || opts.Web || opts.Prompt != "" || opts.PromptFile != "" || len(args) > 0) {
 		return opts, nil, fmt.Errorf("update 不能与其他启动参数混用")
 	}
 	return opts, args, nil
