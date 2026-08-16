@@ -72,11 +72,15 @@ func TestTokenAuthMiddleware(t *testing.T) {
 	// Mọi POST control thiếu token phải trả 401, bao gồm các workspace quản trị mới.
 	for _, path := range []string{
 		"/api/engine/abort",
+		"/api/translation/request",
 		"/api/translation/retry",
 		"/api/translation/glossary",
 		"/api/snapshots",
 		"/api/snapshots/restore",
 		"/api/settings/model",
+		"/api/library",
+		"/api/library/open",
+		"/api/library/create-and-start",
 	} {
 		reqPostNoAuth, _ := http.NewRequest("POST", path, nil)
 		recPostNoAuth := httptestNewRecorder()
@@ -89,11 +93,15 @@ func TestTokenAuthMiddleware(t *testing.T) {
 	// Bearer token đúng phải cho phép toàn bộ POST control đi qua handler.
 	for _, path := range []string{
 		"/api/engine/abort",
+		"/api/translation/request",
 		"/api/translation/retry",
 		"/api/translation/glossary",
 		"/api/snapshots",
 		"/api/snapshots/restore",
 		"/api/settings/model",
+		"/api/library",
+		"/api/library/open",
+		"/api/library/create-and-start",
 	} {
 		reqPostAuth, _ := http.NewRequest("POST", path, nil)
 		reqPostAuth.Header.Set("Authorization", "Bearer secret-123")

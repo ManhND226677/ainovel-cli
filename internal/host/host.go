@@ -36,26 +36,27 @@ import (
 // Host 是运行时外壳:生命周期/干预入口/事件投影/模型管理。
 // 调度与执行在 engine(确定性循环);语义裁定在 arbiter(LLM-as-function)。
 type Host struct {
-	cfg             bootstrap.Config
-	bundle          assets.Bundle
-	store           *storepkg.Store
-	bookLease       *bookLease
-	styleStats      *tools.StyleStatsIndex
-	models          *bootstrap.ModelSet
-	engine          *engine
-	thinkingApplier agents.ApplyThinking // /model 调推理强度时联动各 Worker
-	writerRestore   *ctxpack.WriterRestorePack
-	translation     *translation.Controller
-	userRules       *userrules.Service
-	observer        *observer
-	usage           *UsageTracker
-	usageCancel     context.CancelFunc  // 停掉 autoSaveLoop 并触发最后一次 flush
-	budget          *BudgetSentinel     // 预算政策；未启用为 nil（方法 nil 安全）
-	gate            *ChapterAdvanceGate // 章节许可与一次性暂停的统一政策组件
-	notifier        *notify.Notifier    // 无人值守告警；未启用为 nil（Send nil 安全）
-	configPath      string              // 配置写盘目标：/config、/model 就近写当前生效的那份（项目级存在则写它，否则全局）
-	logCleanup      func()
-	fileLogErr      error
+	cfg               bootstrap.Config
+	bundle            assets.Bundle
+	store             *storepkg.Store
+	bookLease         *bookLease
+	styleStats        *tools.StyleStatsIndex
+	models            *bootstrap.ModelSet
+	engine            *engine
+	thinkingApplier   agents.ApplyThinking // /model 调推理强度时联动各 Worker
+	writerRestore     *ctxpack.WriterRestorePack
+	translation       *translation.Controller
+	translationPaused bool
+	userRules         *userrules.Service
+	observer          *observer
+	usage             *UsageTracker
+	usageCancel       context.CancelFunc  // 停掉 autoSaveLoop 并触发最后一次 flush
+	budget            *BudgetSentinel     // 预算政策；未启用为 nil（方法 nil 安全）
+	gate              *ChapterAdvanceGate // 章节许可与一次性暂停的统一政策组件
+	notifier          *notify.Notifier    // 无人值守告警；未启用为 nil（Send nil 安全）
+	configPath        string              // 配置写盘目标：/config、/model 就近写当前生效的那份（项目级存在则写它，否则全局）
+	logCleanup        func()
+	fileLogErr        error
 
 	events          chan Event
 	streamCh        chan string
@@ -444,24 +445,71 @@ func (h *Host) StartPrepared(rawRequirement string) error {
 	return nil
 }
 
-// refuseNewBookOverExisting 拒绝在已有成章的书目录里开新书：StartPrepared 会重置
-// checkpoints 与 progress，误触即静默清掉整本书的进度链（导入完成后停在欢迎页
-// 误按 Enter 是最典型场景）。只看已完成章数——规划阶段/启动失败的残留没有成章，
-// 放行以保留共创 Ctrl+S 同会话重试与恢复补裁的自愈路径。
+// refuseNewBookOverExisting blocks StartPrepared when the active book dir already
+// holds real creative work. StartPrepared resets checkpoints/progress, so a
+// mistaken "new book" in the same folder would wipe the resume chain.
+//
+// Allowed (same-dir retry): empty dir, or PhaseInit with no completed chapters
+// and no final chapter files — covers fresh library books and failed startup
+// retries (co-create Ctrl+S / plan_start recovery).
+//
+// Refused: any completed chapter, writing/complete phase, foundation phases
+// (premise/outline), in-progress chapter, or chapters/*.md on disk.
 func (h *Host) refuseNewBookOverExisting() error {
+	if h == nil || h.store == nil {
+		return nil
+	}
 	progress, err := h.store.Progress.Load()
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if progress == nil || len(progress.CompletedChapters) == 0 {
-		return nil
+	name := "truyện chưa đặt tên"
+	completed := 0
+	phase := domain.Phase("")
+	if progress != nil {
+		if n := strings.TrimSpace(progress.NovelName); n != "" {
+			name = n
+		}
+		completed = len(progress.CompletedChapters)
+		phase = progress.Phase
+		if completed > 0 {
+			return fmt.Errorf("thư mục đang mở đã có «%s» với %d chương hoàn tất — mở sách mới sẽ xóa tiến độ/checkpoint. Hãy resume sách này, hoặc tạo/chuyển sang thư mục khác (Web Thư viện · TUI /sach-moi · --output-dir/--book)",
+				name, completed)
+		}
+		if progress.InProgressChapter > 0 || progress.CurrentChapter > 0 {
+			return fmt.Errorf("thư mục đang mở («%s») đang có chương dở (current=%d in_progress=%d) — không thể start truyện mới tại đây. Hãy resume hoặc /sach-moi",
+				name, progress.CurrentChapter, progress.InProgressChapter)
+		}
+		switch phase {
+		case domain.PhasePremise, domain.PhaseOutline, domain.PhaseWriting, domain.PhaseComplete:
+			return fmt.Errorf("thư mục đang mở đã có tiến độ «%s» (phase=%s) — không start đè. Resume sách hiện tại hoặc tạo sách mới ở thư mục khác (/sach-moi, Thư viện)",
+				name, phase)
+		}
 	}
-	name := strings.TrimSpace(progress.NovelName)
-	if name == "" {
-		name = "未定书名"
+	// Final manuscripts on disk even if progress.json was hand-edited.
+	if n := countFinalChapters(h.store.Dir()); n > 0 {
+		return fmt.Errorf("thư mục đang mở đã có %d file chapters/*.md («%s») — không start truyện mới tại đây. Hãy đổi sách (SwitchBook) hoặc /sach-moi",
+			n, name)
 	}
-	return fmt.Errorf("输出目录已有《%s》的 %d 章创作进度，新建会重置其进度与检查点：续写请走恢复入口（重启应用自动恢复），新书请更换输出目录",
-		name, len(progress.CompletedChapters))
+	return nil
+}
+
+func countFinalChapters(dir string) int {
+	entries, err := os.ReadDir(filepath.Join(dir, "chapters"))
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasSuffix(strings.ToLower(name), ".md") {
+			n++
+		}
+	}
+	return n
 }
 
 // startEngine 统一的引擎启动入口(Start/Resume/Continue/干预重启共用)。
@@ -1455,6 +1503,10 @@ func (h *Host) SwitchModel(role, provider, model string) error {
 
 	// 无常驻上下文需要联动:writer/architect/editor 的 ContextManager 走
 	// ContextManagerFactory,下次 spawn 自动按新模型窗口重建。
+	//
+	// Translator/Coordinator keep their own model pointers — rebind so a
+	// dashboard /settings change actually reaches the next translation job.
+	h.rebindTranslationModelsLocked()
 
 	h.emitEvent(Event{
 		Time:     time.Now(),
@@ -1649,6 +1701,16 @@ func (h *Host) CancelCoCreate() {
 }
 
 // ── 工具 ──
+
+// IsCoCreating reports whether the host is inside a stage co-create window.
+func (h *Host) IsCoCreating() bool {
+	if h == nil {
+		return false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.cocreating
+}
 
 func (h *Host) refreshWriterRestore() {
 	if h.writerRestore != nil {
@@ -1960,10 +2022,21 @@ func (h *Host) continueAfterImport(opts imp.Options) bool {
 // 与 ImportFrom 不同：导出是只读操作（不动 Progress / Checkpoint），
 // 因此**不要求 Engine 停机**——写作中途也可以随时导出"现阶段成品"。
 // 只读到 Progress.CompletedChapters + 章节终稿 + 大纲 + premise 的一致快照。
-func (h *Host) Export(ctx context.Context, opts exp.Options) (*exp.Result, error) {
-	var translations *translation.Store
-	if h.translation != nil {
-		translations = h.translation.Store
+
+// ExportDisplayTitle returns the preferred file/package title for a language.
+func (h *Host) ExportDisplayTitle(lang exp.Language) string {
+	if h == nil || h.store == nil {
+		return ""
 	}
-	return exp.Run(ctx, exp.Deps{Store: h.store, Translation: translations}, opts)
+	zhName := ""
+	if p, _ := h.store.Progress.Load(); p != nil {
+		zhName = strings.TrimSpace(p.NovelName)
+	}
+	_, _, titleVI := h.ExportMeta()
+	if lang == exp.LanguageVietnamese {
+		if t := ResolveVietnameseTitle(zhName, titleVI); t != "" {
+			return t
+		}
+	}
+	return zhName
 }

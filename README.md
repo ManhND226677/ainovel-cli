@@ -19,8 +19,8 @@
 - **自适应上下文策略** — 根据总章节数自动切换全量 / 滑窗 / 分层摘要，支持 500+ 章长篇
 - **七维质量评审** — Editor 从设定一致性、角色行为、节奏、叙事连贯、伏笔、钩子、审美品质七个维度评审，审美维度细分描写质感/叙事手法/对话区分度/用词质量/情感打动力五项，每项必须引用原文举证
 - **用户实时干预** — 写作过程中随时在输入框注入修改意见（无需暂停），系统自动评估影响范围并重写受影响章节
-- **可选逐章验收** — 默认仍全自动；需要精细控制时用 `/review on`，每次 `/next` 只放行一个新章节，返工和崩溃恢复不会误消耗许可
-- **统一 TUI 入口** — 交互界面实时观察进度，也支持携带一句需求直接启动
+- **可选逐章验收** — 默认仍全自动；需要精细控制时在仪表盘把推进模式切为 `review`，再点「+1 chương」逐章放行，返工和崩溃恢复不会误消耗许可
+- **内嵌 Web 仪表盘** — 界面随二进制内嵌（go:embed），实时观察进度，也支持携带一句需求直接启动
 - **多 LLM 支持** — OpenRouter / Anthropic / Gemini / OpenAI 等等随意切换
 
 ## 架构
@@ -191,7 +191,7 @@ ToolResultMicrocompact → LightTrim → StoreSummaryCompact → FullSummary
 - **压缩后恢复包** — FullSummary 后自动注入当前章节计划、大纲和角色快照，防止 Writer 压缩后"失忆"
 - **熔断器** — 压缩连续失败时自动跳过并显式告警，采用半开模式，下轮自动重试
 - **CJK Token 估算** — 中文 `runes × 1.5`，不会因为 `bytes/4` 低估而导致压缩触发滞后
-- **TUI 健康度渐变** — 上下文占用绿(<70%)→黄(70-85%)→红(>85%)实时展示
+- **仪表盘健康度渐变** — 上下文占用绿(<70%)→黄(70-85%)→红(>85%)实时展示
 
 ## 快速开始
 
@@ -209,7 +209,8 @@ go install github.com/voocel/ainovel-cli/cmd/ainovel-cli@latest
 ainovel-cli --version
 ainovel-cli update
 
-# 首次运行，自动进入引导流程（选择 Provider → 输入 API Key → Base URL → 模型名）
+# 首次运行，自动进入终端引导流程（选择 Provider → 输入 API Key → Base URL → 模型名）
+# 之后默认启动 Web 仪表盘（界面已内嵌在二进制中），浏览器打开 http://127.0.0.1:10001
 ainovel-cli
 ```
 
@@ -218,46 +219,38 @@ ainovel-cli
 
 ### Docker
 
-Docker 镜像适合在服务器/NAS 上运行 headless 长任务，也可以用 `-it` 进入 TUI。配置和作品目录建议挂载到宿主机：
+Docker 镜像适合在服务器/NAS 上长期运行 Web 仪表盘（界面已内嵌在二进制中）。配置和作品目录建议挂载到宿主机：
 
 ```bash
 mkdir -p config workspace
 
-# TUI
-docker run --rm -it \
-  -v "$PWD/config:/root/.ainovel" \
-  -v "$PWD/workspace:/workspace" \
-  ghcr.io/voocel/ainovel-cli:latest
-
-# Headless
-docker run --rm \
+docker run --rm -p 10001:10001 \
   -v "$PWD/config:/root/.ainovel" \
   -v "$PWD/workspace:/workspace" \
   ghcr.io/voocel/ainovel-cli:latest \
-  --headless --prompt "写一本东方玄幻长篇，主角从边陲小城起步"
+  web --addr 0.0.0.0:10001 --token <控制token>
 ```
 
 也可以用 Compose：
 
 ```bash
-docker compose run --rm ainovel
-docker compose run --rm ainovel --headless --prompt "写一本悬疑短篇"
+docker compose run --rm --service-ports ainovel
 ```
 
-进入 TUI 后，启动阶段支持两种前置交互：
+浏览器打开 `http://127.0.0.1:10001`，在仪表盘上有两种启动方式：
 
-- `快速开始`：一句话直接进入创作
-- `共创规划`：与 AI 多轮对话澄清需求，**右侧实时同步整理出的创作指令草稿**；AI 每轮主动提供 1-3 条引导建议，可连续按数字键组合填入，编辑后发送，按 `Ctrl+S` 进入正式创作
+- `快速开始`：首页输入一句话需求直接开始创作
+- `共创规划`：与 AI 多轮对话澄清需求，实时整理创作指令草稿后开始
 
 两种模式最终都会收敛为同一份创作指令，再进入同一套创作引擎。
 
 ### 管理多本小说
 
-每本小说绑定到启动目录，产物落在 `{cwd}/output/novel/`。换目录启动 = 换一本，`cd` 回去启动 = 自动从最近 checkpoint 恢复。配置 `~/.ainovel/config.json` 全局共享，无需复制。
+每本小说对应 `library/` 下的独立目录，仪表盘的「Thư viện / 图书馆」页面负责创建、切换与归档；也可以在启动时用 `--book <id|slug|名称>` 或 `--output-dir <路径>` 指定。换书 = 切换 active 目录，切回旧书会自动从最近 checkpoint 恢复。配置 `~/.ainovel/config.json` 全局共享，无需复制。
 
 ### 配置文件
 
-首次运行时自动引导生成配置文件 `~/.ainovel/config.json`。进入 TUI 后可输入 `/config` 新增或编辑 Provider、保存多个模型并为每个模型设置上下文窗口；保存后立即生效。`/model` 用于在这些已保存模型之间切换。
+首次运行时自动引导生成配置文件 `~/.ainovel/config.json`。之后在仪表盘「Thiết lập / 设置」页可以新增或编辑 Provider、保存多个模型并为每个模型设置上下文窗口；保存后立即生效。
 
 也可以手动创建配置文件，参考仓库根目录的 `config.example.jsonc`。首次引导也会复制一份到 `~/.ainovel/config.example.jsonc`，方便本机离线查看。
 
@@ -308,7 +301,7 @@ docker compose run --rm ainovel --headless --prompt "写一本悬疑短篇"
 
 Provider 详情中的 API Key 与 Base URL 支持原位编辑，已有 Key 只显示首尾脱敏提示；“测试连接”会使用当前草稿和所选模型发送一个最小真实请求，可能产生少量 API 用量，但测试结果不会阻止保存或触发自动降级。任意 `extra`、`extra_body`、`stream_idle_timeout` 等高级配置仍在界面显示的实际配置文件中维护。
 
-`reasoning_effort` 为默认推理强度，可选值为 `off` / `low` / `medium` / `high` / `xhigh` / `max`；省略或空字符串表示沿用模型/provider 默认。`roles.<role>.reasoning_effort` 可按角色覆盖，未配置时继承顶层 `reasoning_effort`。推理强度按“意图 × 能力”生效：配置里存的是你选定的**原始意图**，实际下发时再按该角色**当前模型的能力**钳制——换到能力较低的模型只是当次生效值被钳低，存储的意图不变，切回强模型即自动恢复。TUI `/model` 面板切换 provider、model 或推理强度后，会写回当前生效的那份配置（与 `/config` 一致：项目级存在则写项目，否则写全局）。
+`reasoning_effort` 为默认推理强度，可选值为 `off` / `low` / `medium` / `high` / `xhigh` / `max`；省略或空字符串表示沿用模型/provider 默认。`roles.<role>.reasoning_effort` 可按角色覆盖，未配置时继承顶层 `reasoning_effort`。推理强度按“意图 × 能力”生效：配置里存的是你选定的**原始意图**，实际下发时再按该角色**当前模型的能力**钳制——换到能力较低的模型只是当次生效值被钳低，存储的意图不变，切回强模型即自动恢复。Web 设置页（Thiết lập）切换 provider、model 或推理强度后，会写回当前生效的那份配置（项目级存在则写项目，否则写全局）。
 
 `providers.<name>.api` 仅对 `type: "openai"` 或内置 `openai` 生效，用于选择 OpenAI 协议 endpoint：`chat`（默认，`base_url + /chat/completions`）或 `responses`（`base_url + /responses`）。`base_url` 若已包含路径（如火山方舟的 `/api/v3`），该路径会原样保留；只填写域名时默认使用 OpenAI 的 `/v1`。Codex 类代理通常需要配置为 `responses`。
 
@@ -316,7 +309,7 @@ Provider 详情中的 API Key 与 Base URL 支持原位编辑，已有 Key 只�
 
 ## 诊断报告
 
-在 TUI 中输入 `/diag` 可对当前小说的 output 产物进行诊断分析，产出可执行的发现和改进建议。
+诊断报告（diag）可对当前小说的 output 产物进行诊断分析，产出可执行的发现和改进建议。
 
 诊断覆盖四个维度：
 
@@ -331,7 +324,7 @@ Provider 详情中的 API Key 与 Base URL 支持原位编辑，已有 Key 只�
 
 ## 仿写画像
 
-把参考文章放到当前启动目录的 `simulate/` 文件夹中，然后在 TUI 输入 `/simulate`。系统会递归读取 `.txt`、`.md`、`.markdown` 文件，用 architect 模型分析语料，并写入：
+把参考文章放到当前启动目录的 `simulate/` 文件夹中触发仿写画像（当前版本为引擎内部功能，尚未接入 Web 界面）。系统会递归读取 `.txt`、`.md`、`.markdown` 文件，用 architect 模型分析语料，并写入：
 
 ```text
 output/novel/meta/simulation_profile.json
@@ -350,7 +343,7 @@ output/novel/meta/simulation_profile.json
 
 ## 导入
 
-在 TUI 中输入 `/import <文件路径>` 可把一本已有的小说**语义编译**进项目。一次启动绑定一本书（启动目录下的 `output/novel`），因此导入通常在**新目录启动后的欢迎界面**直接发起——它和"输入需求起新书"、"共创起新书"并列，是起一本书的第三种方式；引擎正在创作时该命令会被拒绝。管线分阶段推进：源文件快照（ingest）→ LLM 识别章节边界（segment）→ 确认切分 → 逐章提取事实（analyze）→ 分层归纳全书前提 / 角色 / 世界观 / 分层大纲 / 指南针（synthesize）→ 发布正式 Foundation 并逐章落盘（publish）。章节边界由模型按语义裁定，不依赖硬编码标题规则；Go 侧只掌管坐标、覆盖校验、幂等与顺序。
+导入（import）可把一本已有的小说**语义编译**进项目（当前版本为引擎内部功能，尚未接入 Web 界面）。一次启动绑定一本书（启动目录下的 `output/novel`），因此导入通常在**新目录启动后的欢迎界面**直接发起——它和"输入需求起新书"、"共创起新书"并列，是起一本书的第三种方式；引擎正在创作时该命令会被拒绝。管线分阶段推进：源文件快照（ingest）→ LLM 识别章节边界（segment）→ 确认切分 → 逐章提取事实（analyze）→ 分层归纳全书前提 / 角色 / 世界观 / 分层大纲 / 指南针（synthesize）→ 发布正式 Foundation 并逐章落盘（publish）。章节边界由模型按语义裁定，不依赖硬编码标题规则；Go 侧只掌管坐标、覆盖校验、幂等与顺序。
 
 典型流程就三步——导入、核对、等完成：
 
@@ -380,14 +373,14 @@ output/novel/meta/simulation_profile.json
 - 只能导入到**空书**（没有已完成章节），不支持把另一本书并入已有作品；源文件支持 `txt`/`md`，编码 UTF-8 / GB18030（自动识别，无法可靠解码会明确报错）。
 - 每个阶段的产物落在 `meta/import/` 工作区并按输入指纹绑定：中断或失败后重跑 `/import` 只补做缺失部分，不重复调用模型、不用记 "导到第几章了"。存在未完成的导入时，重新启动后的欢迎界面会主动提示进度（如"已分析 210/300 章"）；恢复完成前引擎被门禁挡住，不会把半成品当完整的书续写。模型输出失败的原始响应保存在 `meta/import/failures/` 供排查。
 - 故事状态被综合判定为 `uncertain` 时管线停下，用 `--story=open|closed` 明确后重跑即可。
-- 默认发布完成后设一次验收 Hold，等你确认再续写；`--continue` 跳过该 Hold（review 模式下仍需 `/next`）。
+- 默认发布完成后设一次验收 Hold，等你确认再续写；`--continue` 跳过该 Hold（review 模式下仍需在仪表盘点「+1 chương」）。
 - 导入的三个语义函数可在配置 `roles` 中指定独立模型档位（见[按角色使用不同模型](#按角色使用不同模型)）。
 
 > 原文会逐字落盘为已完成章节，因此导入适合"续写同一本书"。如果只想借鉴设定做全新创作，请用普通方式起一本新书、在需求里描述想要的风格设定。
 
 ## 导出
 
-在 TUI 中输入 `/export` 可把已完成的章节合并导出，默认 TXT，写到 `{novelDir}/{NovelName}.txt`。导出是只读操作，写作中途也可以随时拿"现阶段成品"，不影响引擎运行。
+在 Web 仪表盘「Đọc bản thảo / 读稿」页点击导出按钮可把已完成的章节合并导出（EPUB/TXT，中/越双语），下载同时写到 `{novelDir}/{NovelName}.txt`。导出是只读操作，写作中途也可以随时拿"现阶段成品"，不影响引擎运行。
 
 格式由**输出路径后缀**决定（`.txt` / `.epub`）：
 
@@ -619,8 +612,8 @@ output/{novel_name}/
 系统默认使用 `auto` 模式持续自主创作。需要逐章审读、避免审读窗口期继续写新章时，可启用确定性的验收闸门：
 
 ```text
-/review on   # 开启逐章验收；当前工作完成后，在下一个正向新章前等待
-/next        # 只放行下一章；必要的评审与弧/卷结构维护仍会自动完成
+推进模式 = review   # 仪表盘开启逐章验收；当前工作完成后，在下一个正向新章前等待
++1 chương          # 只放行下一章；必要的评审与弧/卷结构维护仍会自动完成
 /review off  # 恢复自动推进；若当前已暂停，再输入继续指令启动 Engine
 ```
 
@@ -628,17 +621,13 @@ output/{novel_name}/
 
 ## 实时干预（Steer）
 
-创作过程中可以随时通过输入框注入修改意见，**不需要暂停或重启**。
-
-### TUI 模式
-
-创作启动后，底部输入框自动切换为干预模式：
+创作过程中可以随时通过仪表盘首页的指令输入框注入修改意见，**不需要暂停或重启**：
 
 ```
-❯ 把感情线提前到第4章，增加男女主的对手戏
+把感情线提前到第4章，增加男女主的对手戏
 ```
 
-输入后按 Enter，系统自动：
+发送后，系统自动：
 1. 记录干预指令到 `run.json`（崩溃恢复用）
 2. Arbiter 立即裁定（查询秒级回显；控制类动作在章节边界安全提交）
 3. 按裁定执行：修改设定走 Architect、重写已有章节走 Editor 入队、写作规则即时落盘——每次裁定审计可回放
@@ -699,7 +688,6 @@ output/{novel_name}/
 - **Go 1.25** — 主语言
 - **[agentcore](https://github.com/voocel/agentcore)** — 极简 Agent 内核（tool-calling + streaming）
 - **[litellm](https://github.com/voocel/litellm)** — 统一 LLM 接口适配
-- **[Bubble Tea](https://github.com/charmbracelet/bubbletea)** — 终端 TUI 框架
 
 ## License
 

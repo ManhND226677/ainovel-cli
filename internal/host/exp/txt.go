@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
+	"github.com/voocel/ainovel-cli/internal/translation"
 )
 
 // chapterTitleIndex 给定章号查标题，缺失返回空串。
@@ -136,18 +137,218 @@ func renderTXT(
 	return b.String()
 }
 
-// renderVietnameseTXT renders only Vietnamese presentation labels. It does not
-// consume Chinese outline/volume names because those have not been translated.
-func renderVietnameseTXT(chapters []int, bodies map[int]string) string {
+// renderVietnameseTXT renders Vietnamese labels. Titles come from titleIdx
+// (resolved before render so every chapter has a full name when available).
+func renderVietnameseTXT(chapters []int, titleIdx chapterTitleIndex, bodies map[int]string) string {
 	var b strings.Builder
 	b.WriteString("BẢN DỊCH TIẾNG VIỆT\n\n")
 	for i, ch := range chapters {
-		fmt.Fprintf(&b, "Chương %d\n\n", ch)
-		b.WriteString(strings.TrimSpace(bodies[ch]))
+		body := strings.TrimSpace(bodies[ch])
+		title := normalizeExportTitle(ch, LanguageVietnamese, titleIdx[ch])
+		if title == "" {
+			title = normalizeExportTitle(ch, LanguageVietnamese, extractVietnameseChapterTitle(body))
+		}
+		if title != "" {
+			fmt.Fprintf(&b, "Chương %d  %s\n\n", ch, title)
+			body = stripLeadingVietnameseTitle(body, title)
+		} else {
+			fmt.Fprintf(&b, "Chương %d\n\n", ch)
+		}
+		b.WriteString(body)
 		b.WriteString("\n")
 		if i < len(chapters)-1 {
 			b.WriteString("\n\n")
 		}
 	}
 	return b.String()
+}
+
+// resolveVietnameseTitles fills titleIdx for every chapter using, in order:
+//  1. Stored ChapterRecord.Title
+//  2. Explicit heading in the Vietnamese body
+//  3. Glossary substitution of the Chinese summary/outline title
+//  4. Optional TitleResolver (LLM batch) for leftovers
+//  5. Bare "Chương N" (caller may still overwrite)
+//
+// Resolved titles are persisted back into the translation store when possible.
+func resolveVietnameseTitles(
+	deps Deps,
+	chapters []int,
+	bodies map[int]string,
+	zhTitles chapterTitleIndex,
+	records map[int]translation.ChapterRecord,
+) (chapterTitleIndex, map[int]string) {
+	titleIdx := make(chapterTitleIndex, len(chapters))
+	persist := make(map[int]string)
+	var glossary translation.Glossary
+	if deps.Translation != nil {
+		if g, err := deps.Translation.LoadGlossary(); err == nil {
+			glossary = g
+		}
+	}
+
+	needResolve := make(map[int]string) // ch → zh title
+	for _, ch := range chapters {
+		// 1) durable record (preferred — offline backfill writes here)
+		if rec, ok := records[ch]; ok {
+			if t := normalizeExportTitle(ch, LanguageVietnamese, rec.Title); t != "" {
+				titleIdx[ch] = t
+				bodies[ch] = stripLeadingVietnameseTitle(strings.TrimSpace(bodies[ch]), t)
+				// Rewrite bad stored titles like "Chương 3"
+				if strings.TrimSpace(rec.Title) != t {
+					persist[ch] = t
+				}
+				continue
+			}
+		}
+		// 2) body heading
+		if t := normalizeExportTitle(ch, LanguageVietnamese, extractVietnameseChapterTitle(bodies[ch])); t != "" {
+			titleIdx[ch] = t
+			bodies[ch] = stripLeadingVietnameseTitle(strings.TrimSpace(bodies[ch]), t)
+			persist[ch] = t
+			continue
+		}
+		// 3) glossary on ZH title
+		zh := strings.TrimSpace(zhTitles[ch])
+		if zh != "" {
+			if t := normalizeExportTitle(ch, LanguageVietnamese, translation.TranslateTitleWithGlossary(zh, glossary)); t != "" {
+				titleIdx[ch] = t
+				persist[ch] = t
+				continue
+			}
+			needResolve[ch] = zh
+		}
+	}
+
+	// 4) optional batch resolver (Host LLM) for every chapter still missing a real title.
+	// Always merge whatever the resolver returned — even if it also returned an error
+	// (partial batch success is common and must not be discarded).
+	if len(needResolve) > 0 && deps.TitleResolver != nil {
+		resolved, _ := deps.TitleResolver(needResolve)
+		for ch, t := range resolved {
+			t = normalizeExportTitle(ch, LanguageVietnamese, t)
+			if t == "" {
+				continue
+			}
+			titleIdx[ch] = t
+			persist[ch] = t
+			delete(needResolve, ch)
+		}
+	}
+
+	// Persist newly discovered titles so the next export is instant.
+	if deps.Translation != nil && len(persist) > 0 {
+		_, _ = deps.Translation.SetChapterTitles(persist)
+	}
+	return titleIdx, bodies
+}
+
+// extractVietnameseChapterTitle returns a short non-CJK first-line title only when
+// the translator put an *explicit* heading. Ordinary prose first lines must not
+// be promoted (they are story text). Empty → TOC shows bare "Chương N".
+//
+// Accepted forms:
+//   - Markdown ATX: "# Đêm mưa" / "## Chương 12: Đêm mưa"
+//   - Plain "Chương 12: Đêm mưa" / "Chương 12 - Đêm mưa"
+//
+// Rejected: Chinese outline titles, bare "Chương 12", plain prose paragraphs.
+func extractVietnameseChapterTitle(body string) string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return ""
+	}
+	first, _, _ := strings.Cut(body, "\n")
+	first = strings.TrimSpace(first)
+	if first == "" || looksMostlyHan(first) {
+		return ""
+	}
+
+	explicitMarkdown := false
+	if m := atxTitleRe.FindStringSubmatch(first); len(m) == 2 {
+		first = strings.TrimSpace(m[1])
+		explicitMarkdown = true
+	}
+
+	lower := strings.ToLower(first)
+	if strings.HasPrefix(lower, "chương") {
+		fields := strings.Fields(first)
+		if len(fields) < 3 {
+			return "" // "Chương 12" alone
+		}
+		// Chương <n> [sep] <title...>
+		rest := strings.TrimSpace(strings.Join(fields[2:], " "))
+		rest = strings.TrimLeft(rest, ":.-–— ")
+		first = rest
+		if first == "" {
+			return ""
+		}
+		// "Chương N …" counts as explicit even without markdown.
+		explicitMarkdown = true
+	}
+
+	// Without markdown or "Chương N …" prefix, do not invent titles from prose.
+	if !explicitMarkdown {
+		return ""
+	}
+
+	first = strings.TrimSpace(first)
+	if looksMostlyHan(first) {
+		return ""
+	}
+	runes := []rune(first)
+	if len(runes) < 2 || len(runes) > 48 {
+		return ""
+	}
+	hasLetter := false
+	for _, r := range runes {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= 'À' && r <= 'ỹ') {
+			hasLetter = true
+			break
+		}
+	}
+	if !hasLetter {
+		return ""
+	}
+	return first
+}
+
+func stripLeadingVietnameseTitle(body, title string) string {
+	body = strings.TrimSpace(body)
+	title = strings.TrimSpace(title)
+	if body == "" || title == "" {
+		return body
+	}
+	first, rest, hasNL := strings.Cut(body, "\n")
+	firstTrim := strings.TrimSpace(first)
+	if m := atxTitleRe.FindStringSubmatch(firstTrim); len(m) == 2 {
+		firstTrim = strings.TrimSpace(m[1])
+	}
+	// Exact title, or "Chương N Title"
+	if firstTrim == title || strings.HasSuffix(firstTrim, title) && strings.Contains(strings.ToLower(firstTrim), "chương") {
+		if !hasNL {
+			return ""
+		}
+		return strings.TrimLeft(rest, "\n")
+	}
+	return body
+}
+
+func looksMostlyHan(s string) bool {
+	han, other := 0, 0
+	for _, r := range s {
+		switch {
+		case r >= 0x4E00 && r <= 0x9FFF:
+			han++
+		case r == ' ' || r == '\t' || r == '#' || r == ':' || r == '-' || r == '–' || r == '—':
+			// ignore
+		case (r >= '0' && r <= '9'):
+			// ignore digits in "Chương 12"
+		default:
+			other++
+		}
+	}
+	if han == 0 {
+		return false
+	}
+	return han >= other
 }

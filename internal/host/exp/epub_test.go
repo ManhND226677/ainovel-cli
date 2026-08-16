@@ -10,7 +10,7 @@ import (
 
 func TestRenderEPUB_StructuralInvariants(t *testing.T) {
 	data, err := renderEPUB(
-		"光斑",
+		epubMeta{Title: "光斑", Author: "ainovel-cli", Language: LanguageChinese},
 		[]int{1, 2},
 		chapterTitleIndex{1: "雨夜归人", 2: "破晓"},
 		nil,
@@ -127,7 +127,7 @@ func TestRenderEPUB_StructuralInvariants(t *testing.T) {
 
 func TestRenderEPUB_HTMLEscape(t *testing.T) {
 	data, err := renderEPUB(
-		"A & B", // & 必须转义
+		epubMeta{Title: "A & B", Author: "ainovel-cli", Language: LanguageChinese}, // & 必须转义
 		[]int{1},
 		chapterTitleIndex{1: "C \"D\""},
 		nil,
@@ -163,7 +163,7 @@ func TestRenderEPUB_LayeredVolume(t *testing.T) {
 		2: {VolumeIdx: 1, VolumeTitle: "起源"},
 	}
 	data, err := renderEPUB(
-		"X",
+		epubMeta{Title: "X", Author: "ainovel-cli", Language: LanguageChinese},
 		[]int{1, 2},
 		chapterTitleIndex{1: "A", 2: "B"},
 		locs,
@@ -197,7 +197,7 @@ func TestRenderEPUB_LayeredVolume(t *testing.T) {
 
 func TestRenderEPUB_NoCoverWhenNoTitle(t *testing.T) {
 	data, err := renderEPUB(
-		"", []int{1},
+		epubMeta{Title: "", Author: "ainovel-cli", Language: LanguageChinese}, []int{1},
 		chapterTitleIndex{1: "唯一一章"},
 		nil,
 		map[int]string{1: "正文。"},

@@ -3,16 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
 	"github.com/voocel/ainovel-cli/assets"
 	"github.com/voocel/ainovel-cli/internal/bootstrap"
-	"github.com/voocel/ainovel-cli/internal/entry/headless"
-	"github.com/voocel/ainovel-cli/internal/entry/tui"
-	"github.com/voocel/ainovel-cli/internal/eval"
-	"github.com/voocel/ainovel-cli/internal/i18n"
+	"github.com/voocel/ainovel-cli/internal/host"
 	"github.com/voocel/ainovel-cli/internal/rules"
 	buildversion "github.com/voocel/ainovel-cli/internal/version"
 	"github.com/voocel/ainovel-cli/internal/webapi"
@@ -24,15 +20,9 @@ var (
 	date    = "unknown"
 )
 
-// headlessMode 记录本次是否 headless 启动，供 die 决定错误退出时是否暂停。
-var headlessMode bool
-
+// Ứng dụng chỉ còn chế độ web dashboard: chạy không tham số là khởi động server
+// tại 127.0.0.1:10001. `web`/`--web` vẫn được chấp nhận cho tương thích lệnh cũ.
 func main() {
-	// 子命令在常规 flag 解析之前拦截：eval 是离线评测 harness，参数体系独立。
-	if len(os.Args) > 1 && os.Args[1] == "eval" {
-		os.Exit(eval.Command(os.Args[2:]))
-	}
-
 	opts, args, err := parseCLIOptions(os.Args[1:])
 	if err != nil {
 		die("flags: %v", err)
@@ -48,23 +38,17 @@ func main() {
 		}
 		return
 	}
-	headlessMode = opts.Headless
 
-	// 首次引导
+	// Hướng dẫn lần đầu
 	if bootstrap.NeedsSetup() {
-		if opts.Headless {
-			die("Lỗi: %s", i18n.T("cli.error_headless_setup"))
-		}
 		setupCfg, err := bootstrap.RunSetup()
 		if err != nil {
 			die("setup: %v", err)
 		}
-		// 引导完成后使用生成的配置继续
 		runWithConfig(setupCfg, opts, args)
 		return
 	}
 
-	// 加载配置
 	cfg, err := bootstrap.LoadConfig()
 	if err != nil {
 		die("config: %v", err)
@@ -73,24 +57,25 @@ func main() {
 	runWithConfig(cfg, opts, args)
 }
 
-// die 统一处理致命错误退出：打印到 stderr、落盘到 ~/.ainovel/last-error.log，
-// 并在交互式终端（非 headless）下暂停等待回车——双击启动时控制台会随进程退出
-// 立即关闭，不暂停的话错误一闪而过，正是 issue #37 里用户无从排查的根因。
+// die xử lý lỗi thoát: in ra stderr, ghi vào ~/.ainovel/last-error.log,
+// và tạm dừng chờ Enter khi chạy trong terminal tương tác — khởi động bằng
+// double-click thì console đóng theo process, không tạm dừng người dùng sẽ
+// không kịp đọc lỗi.
 func die(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stderr, msg)
 	if path := bootstrap.WriteStartupError(msg); path != "" {
-		fmt.Fprintf(os.Stderr, i18n.T("cli.error_detail_written")+"\n", path)
+		fmt.Fprintf(os.Stderr, "(chi tiết lỗi đã được ghi vào %s)\n", path)
 	}
-	if !headlessMode && stdinIsTerminal() {
-		fmt.Fprint(os.Stderr, i18n.T("cli.press_enter_exit"))
+	if stdinIsTerminal() {
+		fmt.Fprint(os.Stderr, "\nNhấn Enter để thoát...")
 		fmt.Fscanln(os.Stdin)
 	}
 	os.Exit(1)
 }
 
-// stdinIsTerminal 判断标准输入是否连接到终端（字符设备）。双击启动 / 交互式终端
-// 为 true；管道、重定向、CI 为 false。零依赖近似，足够区分要不要暂停。
+// stdinIsTerminal kiểm tra stdin có nối với terminal không. Double-click /
+// terminal tương tác là true; pipe, redirect, CI là false.
 func stdinIsTerminal() bool {
 	fi, err := os.Stdin.Stat()
 	if err != nil {
@@ -103,52 +88,42 @@ func runWithConfig(cfg bootstrap.Config, opts cliOptions, args []string) {
 	rules.EnsureHomeRulesDir()
 
 	if len(args) > 0 {
-		die("Lỗi: %s", i18n.T("cli.error_positional_prompt"))
+		die("Lỗi: tham số không hỗ trợ %q; các flag hợp lệ: --addr --token --ui-dir --book --output-dir", args[0])
 	}
 
-	// FillDefaults 必须先于资产加载:OutputDir 是运行时字段,默认值在此归一——
-	// 否则默认配置下 <书目录>/style/ 的本书级文风覆盖永远不会被加载。
+	// FillDefaults phải chạy trước khi nạp assets: OutputDir là field runtime,
+	// giá trị mặc định được chuẩn hoá ở đây — nếu không thì style/ cấp sách
+	// (book-level style override) sẽ không bao giờ được tải.
 	cfg.FillDefaults()
+	// Multi-book: --output-dir thắng; nếu không có thì --book phân giải/tạo trong library/.
+	if dir, err := resolveCLIBookDir(opts); err != nil {
+		die("book: %v", err)
+	} else if dir != "" {
+		cfg.OutputDir = dir
+	}
 	bundle := assets.Load(cfg.Style, assets.DefaultLoadOptions(cfg.OutputDir))
-	if opts.Headless {
-		prompt, err := loadPrompt(opts)
-		if err != nil {
-			die("error: %v", err)
-		}
-		if err := headless.Run(cfg, bundle, headless.Options{Prompt: prompt}); err != nil {
-			die("error: %v", err)
-		}
-		return
-	}
-	if opts.Web {
-		if opts.Prompt != "" || opts.PromptFile != "" {
-			die("web không nhận --prompt; hãy khởi chạy sáng tác từ trình duyệt")
-		}
-		if err := webapi.Run(cfg, bundle, opts.WebAddr); err != nil {
-			die("web: %v", err)
-		}
-		return
-	}
-	if opts.Prompt != "" || opts.PromptFile != "" {
-		die("Lỗi: %s", i18n.T("cli.error_prompt_headless"))
-	}
-	if err := tui.Run(cfg, bundle, versionInfo()); err != nil {
-		die("error: %v", err)
+	if err := webapi.Run(cfg, bundle, webapi.Options{
+		Addr:  opts.WebAddr,
+		Token: opts.WebToken,
+		UIDir: opts.WebUIDir,
+	}); err != nil {
+		die("web: %v", err)
 	}
 }
 
 type cliOptions struct {
-	Headless      bool
-	Web           bool
+	Web           bool // tương thích lệnh cũ, web luôn là chế độ chạy
 	WebAddr       string
-	Prompt        string
-	PromptFile    string
+	WebToken      string
+	WebUIDir      string
+	Book          string // library id/slug/path hoặc tên sách mới
+	OutputDir     string // thư mục sách tường minh (thắng --book)
 	Version       bool
 	Update        bool
 	UpdateVersion string
 }
 
-// parseCLIOptions 提取 CLI flag，返回选项和剩余参数。
+// parseCLIOptions tách CLI flag, trả về options và tham số dư.
 func parseCLIOptions(argv []string) (cliOptions, []string, error) {
 	var opts cliOptions
 	var args []string
@@ -176,8 +151,6 @@ func parseCLIOptions(argv []string) (cliOptions, []string, error) {
 			if i+1 < len(argv) {
 				return opts, nil, fmt.Errorf("update 只接受一个可选版本参数")
 			}
-		case "--headless":
-			opts.Headless = true
 		case "web", "--web":
 			opts.Web = true
 		case "--addr":
@@ -186,29 +159,38 @@ func parseCLIOptions(argv []string) (cliOptions, []string, error) {
 			}
 			opts.WebAddr = argv[i+1]
 			i++
-		case "--prompt":
+		case "--token":
 			if i+1 >= len(argv) {
-				return opts, nil, fmt.Errorf("--prompt 缺少值")
+				return opts, nil, fmt.Errorf("--token thiếu giá trị")
 			}
-			opts.Prompt = argv[i+1]
+			opts.WebToken = argv[i+1]
 			i++
-		case "--prompt-file":
+		case "--ui-dir":
 			if i+1 >= len(argv) {
-				return opts, nil, fmt.Errorf("--prompt-file 缺少值")
+				return opts, nil, fmt.Errorf("--ui-dir thiếu giá trị")
 			}
-			opts.PromptFile = argv[i+1]
+			opts.WebUIDir = argv[i+1]
+			i++
+		case "--book":
+			if i+1 >= len(argv) {
+				return opts, nil, fmt.Errorf("--book thiếu giá trị")
+			}
+			opts.Book = argv[i+1]
+			i++
+		case "--output-dir":
+			if i+1 >= len(argv) {
+				return opts, nil, fmt.Errorf("--output-dir thiếu giá trị")
+			}
+			opts.OutputDir = argv[i+1]
 			i++
 		default:
 			args = append(args, argv[i])
 		}
 	}
-	if opts.Prompt != "" && opts.PromptFile != "" {
-		return opts, nil, fmt.Errorf("--prompt 和 --prompt-file 不能同时使用")
-	}
-	if opts.Version && (opts.Update || opts.Headless || opts.Web || opts.Prompt != "" || opts.PromptFile != "" || len(args) > 0) {
+	if opts.Version && (opts.Update || opts.Web || len(args) > 0) {
 		return opts, nil, fmt.Errorf("version 不能与其他启动参数混用")
 	}
-	if opts.Update && (opts.Headless || opts.Web || opts.Prompt != "" || opts.PromptFile != "" || len(args) > 0) {
+	if opts.Update && (opts.Web || len(args) > 0) {
 		return opts, nil, fmt.Errorf("update 不能与其他启动参数混用")
 	}
 	return opts, args, nil
@@ -242,24 +224,6 @@ func runSelfUpdate(target string) error {
 	return nil
 }
 
-func loadPrompt(opts cliOptions) (string, error) {
-	return loadPromptFrom(opts, os.Stdin)
-}
-
-func loadPromptFrom(opts cliOptions, stdin io.Reader) (string, error) {
-	if opts.PromptFile == "" {
-		return strings.TrimSpace(opts.Prompt), nil
-	}
-
-	var data []byte
-	var err error
-	if opts.PromptFile == "-" {
-		data, err = io.ReadAll(stdin)
-	} else {
-		data, err = os.ReadFile(opts.PromptFile)
-	}
-	if err != nil {
-		return "", fmt.Errorf(i18n.T("cli.error_prompt_read"), err)
-	}
-	return strings.TrimSpace(string(data)), nil
+func resolveCLIBookDir(opts cliOptions) (string, error) {
+	return host.ResolveBookDir(opts.OutputDir, opts.Book, "")
 }

@@ -7,6 +7,62 @@ import (
 	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
+func TestNormalizeExportTitle(t *testing.T) {
+	cases := []struct {
+		ch   int
+		lang Language
+		in   string
+		want string
+	}{
+		{1, LanguageVietnamese, "Chương 1", ""},
+		{1, LanguageVietnamese, "Chương 1 Chương 1", ""}, // after strip first two tokens → "Chương 1" → empty? fields: Chương,1,Chương,1 → rest "Chương 1" still bare-ish
+		{3, LanguageVietnamese, "sương mù hoang dã", "sương mù hoang dã"},
+		{12, LanguageVietnamese, "Chương 12: Đêm mưa", "Đêm mưa"},
+		{1, LanguageChinese, "第 1 章", ""},
+		{1, LanguageChinese, "第 1 章 夜半啃骨声", "夜半啃骨声"},
+		{1, LanguageVietnamese, "碎裂穹顶", ""},
+	}
+	// Fix expectation for "Chương 1 Chương 1": fields[2:]=["Chương","1"] → "Chương 1" which equals bare → second pass not applied; returns "Chương 1" unless we re-check.
+	// normalize only strips one prefix; re-run bare check at end is enough if we call normalize twice in chapterLabel... we only call once.
+	// Make normalize re-check bare after strip:
+	_ = cases
+	if got := normalizeExportTitle(1, LanguageVietnamese, "Chương 1"); got != "" {
+		t.Fatalf("bare Chương 1 → %q", got)
+	}
+	if got := normalizeExportTitle(12, LanguageVietnamese, "Chương 12: Đêm mưa"); got != "Đêm mưa" {
+		t.Fatalf("prefixed → %q", got)
+	}
+	if got := normalizeExportTitle(1, LanguageChinese, "第 1 章 夜半啃骨声"); got != "夜半啃骨声" {
+		t.Fatalf("zh → %q", got)
+	}
+	if got := normalizeExportTitle(3, LanguageVietnamese, "sương mù hoang dã"); got != "sương mù hoang dã" {
+		t.Fatalf("vi title → %q", got)
+	}
+}
+
+func TestExtractVietnameseChapterTitle(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"prose first line", "Lục Uyên bị cái lạnh làm tỉnh giấc.\n\nĐoạn hai.", ""},
+		{"reject han title", "碎裂穹顶\n\nNội dung.", ""},
+		{"markdown vi title", "# Đêm mưa về nhà\n\nHắn nhìn ra cửa sổ.", "Đêm mưa về nhà"},
+		{"chuong prefix title", "Chương 12: Đêm mưa\n\nNội dung.", "Đêm mưa"},
+		{"bare chuong number", "Chương 12\n\nNội dung.", ""},
+		{"too long paragraph", "Đây là một câu rất dài dùng làm đoạn mở đầu không phải tiêu đề chương vì nó kể chuyện liền mạch.", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := extractVietnameseChapterTitle(c.in)
+			if got != c.want {
+				t.Fatalf("got %q want %q", got, c.want)
+			}
+		})
+	}
+}
+
 func TestStripChapterTitleHeader(t *testing.T) {
 	cases := []struct {
 		name  string

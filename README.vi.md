@@ -8,9 +8,8 @@
 
 | Hạng mục | Hành vi trong bản Việt hóa |
 |---|---|
-| Giao diện và tài liệu | Lệnh, trợ giúp, phần lớn thông báo CLI/TUI, cấu hình mẫu và tài liệu vận hành dùng tiếng Việt |
+| Giao diện và tài liệu | Dashboard web, thông báo và tài liệu vận hành dùng tiếng Việt; giao diện TUI đã được lược bỏ — web là giao diện duy nhất |
 | Lõi sáng tác | Prompt Architect, Writer, Editor, Arbiter, contract tool và artifact sáng tác vẫn là tiếng Trung |
-| Tương thích lệnh cũ | Các lệnh tiếng Anh cũ vẫn hoạt động như bí danh trong giai đoạn chuyển đổi |
 | Dịch Trung → Việt | Translation Coordinator Agent chọn lô chương ổn định theo facts; Translation Agent dịch tuần tự trong nền khi ứng dụng còn chạy |
 | An toàn dữ liệu | Bản dịch nằm dưới `translations/vi/`; fingerprint SHA-256 đánh dấu `stale` nếu chương Trung bị viết lại |
 
@@ -22,17 +21,43 @@ Dự án cần Go theo phiên bản tối thiểu khai báo trong `go.mod`. Sau 
 go run ./cmd/ainovel-cli
 ```
 
-Để chạy không có TUI, dùng `--headless` và cung cấp prompt qua `--prompt` hoặc `--prompt-file`. Lần cấu hình đầu tiên cần chạy TUI một lần.
+Web là chế độ duy nhất: lệnh trên khởi động server tại `http://127.0.0.1:10001`, giao diện dashboard đã được **nhúng sẵn trong binary** nên mở trình duyệt vào địa chỉ đó là dùng được ngay. Lần đầu chưa có config, ứng dụng sẽ hỏi vài câu cấu hình (provider, API key, model) ngay trên terminal trước khi vào server.
+
+Muốn build lại kèm frontend mới nhất (sau khi sửa code dashboard):
+
+```bash
+scripts/build-web.ps1   # Windows
+scripts/build-web.sh    # Linux/macOS
+```
+
+Script sẽ build SPA (`web-dashboard/`), copy vào `internal/webapi/static/` để `go:embed` nhúng vào binary, rồi compile `ainovel-cli(.exe)`.
+
+## Nhiều truyện (multi-book)
+
+Một process Host chỉ **mở một truyện active** tại một thời điểm, nhưng trên đĩa có thể có nhiều truyện:
+
+- Thư mục mặc định legacy: `output/novel`
+- Thư viện mới: `library/<slug>/` + index `library/library.json`
+- **Tạo truyện mới không ghi đè truyện cũ** — luôn tạo folder riêng rồi `SwitchBook`
+
+| Mặt | Cách tạo / đổi truyện |
+|---|---|
+| Web | **Thư viện** → "Tạo & mở" hoặc "Tạo & viết ngay"; Home → **Tạo truyện mới & viết** (`POST /api/library/create-and-start`) |
+| CLI | `--book <id\|slug\|tên-mới>` hoặc `--output-dir <path>` khi khởi động server |
+
+Muốn viết **song song** hai truyện: chạy hai process với hai `--output-dir`/`--book` khác nhau.
+
+Nếu start nhầm vào thư mục đã có chương, engine **từ chối** reset (guard `refuseNewBookOverExisting`).
 
 ### Dashboard web và API local
 
-Dashboard web đọc snapshot agent và runtime event trực tiếp từ Host Go qua API loopback. Sau khi cấu hình provider/model, chạy API bằng:
+Dashboard web đọc snapshot agent và runtime event trực tiếp từ Host Go qua API loopback. Chạy server:
 
 ```bash
-go run ./cmd/ainovel-cli web --addr 127.0.0.1:8090
+go run ./cmd/ainovel-cli web --addr 127.0.0.1:10001
 ```
 
-Mở dashboard web, đặt `VITE_ENGINE_API_URL=http://127.0.0.1:8090/api` khi chạy frontend. API cung cấp `/api/state`, `/api/events`, `/api/agents/{role}`, `/api/ws` (WebSocket snapshot + event real-time), `/api/translation/status` và `POST /api/translation/retry` với body `{ "chapters": [8, 9] }`, cùng các route điều khiển `POST /api/engine/start`, `/resume`, `/continue` và `/abort`. API chỉ bind loopback mặc định vì các route điều khiển có thể tác động trực tiếp đến engine; không nên public port này ra Internet nếu chưa thêm xác thực.
+(`web` là mặc định — chạy không tham số cũng như nhau.) Giao diện được phục vụ ngay từ chính binary qua `go:embed`; muốn ghi đè bằng bản build ngoài (khi phát triển frontend), truyền `--ui-dir <thư-mục-dist>`. Khi phát triển frontend với Vite dev server, proxy `/api` đã trỏ sẵn sang `127.0.0.1:10001`. API cung cấp `/api/state`, `/api/events`, `/api/agents/{role}`, `/api/ws` (WebSocket snapshot + event real-time), `/api/translation/status` và `POST /api/translation/retry` với body `{ "chapters": [8, 9] }`, cùng các route điều khiển `POST /api/engine/start`, `/resume`, `/continue` và `/abort`. API chỉ bind loopback mặc định vì các route điều khiển có thể tác động trực tiếp đến engine; không nên public port này ra Internet nếu chưa thêm xác thực.
 
 Khi API chưa chạy, dashboard hiển thị lỗi kết nối chi tiết, countdown tự nối lại và nút thử lại; trong thời gian WebSocket gián đoạn, frontend chuyển tạm sang polling thưa hơn để không mất trạng thái. Khi kết nối thành công, snapshot và nhật ký nhận event qua WebSocket, còn từng agent có trang chi tiết với context usage và lịch sử event. Mục **Bản dịch Việt** mở workspace batch: chọn nhiều chương `failed`/`stale`, nhấn **Retry** để tạo một job retry durable; thao tác này không ghi đè bản tiếng Trung.
 
@@ -45,26 +70,10 @@ Dashboard cũng có biểu đồ tiến độ dịch theo event realtime, worksp
 | `/api/snapshots/restore` | `POST` | Khôi phục snapshot; body bắt buộc có `{ "id": "…", "confirm": true }` |
 | `/api/settings/model` | `GET`, `POST` | Đọc, thử kết nối, lưu và áp dụng provider/model thật của engine |
 | `/api/translation/report` | `GET` | Xuất báo cáo Markdown hoặc TXT, tùy chọn `job_id` và `format` |
+| `/api/manuscript/outline` | `GET` | Outline/rail chương (tiêu đề, completed, trạng thái dịch VI) cho reader |
+| `/api/manuscript/chapters/{n}` | `GET` | Đọc bản thảo chương `n`: text Trung (SoT) + artifact Việt nếu có |
 
 Nếu khởi động API với token, các `POST` có tác động đến engine gồm retry batch, cập nhật glossary, tạo/khôi phục snapshot, cài đặt model và các endpoint `/api/engine/*` phải gửi `Authorization: Bearer <token>`. Các endpoint đọc vẫn hoạt động trên loopback để dashboard có thể hiển thị trạng thái.
-
-## Các lệnh TUI tiếng Việt
-
-| Lệnh hiển thị | Bí danh cũ | Mục đích |
-|---|---|---|
-| `/tro-giup` | `/help` | Mở trợ giúp lệnh |
-| `/mo-hinh [vai-tro]` | `/model` | Chọn model và mức suy luận theo vai trò |
-| `/cau-hinh` | `/config` | Quản lý provider, model và context window |
-| `/chan-doan` | `/diag` | Xem báo cáo sức khỏe sáng tác |
-| `/duyet bat|tat` | `/review on|off` | Bật/tắt xét duyệt từng chương |
-| `/tiep-tuc` | `/next` | Cho phép thêm một chương trong chế độ xét duyệt |
-| `/nhap` | `/import` | Nhập tác phẩm bên ngoài |
-| `/mo-lai` | `/reopen` | Mở lại tác phẩm đã hoàn tất |
-| `/dong-sang-tac` | `/cocreate` | Tạm dừng để đồng sáng tác kế hoạch |
-| `/mo-phong` | `/simulate` | Tạo/cập nhật profile mô phỏng văn phong |
-| `/xuat` | `/export` | Xuất các chương đã hoàn tất |
-| `/dich` | `/translate` | Yêu cầu Coordinator đánh giá việc mở lô dịch |
-| `/dich trang-thai` | — | Xem số chương Việt đã hoàn tất, đang chờ, lỗi và stale |
 
 ## Bật dịch Trung → Việt
 
@@ -114,23 +123,17 @@ translations/vi/
 └── exports/                   # Vị trí dự phòng cho artifact xuất bản
 ```
 
-Nếu một chương nguồn tiếng Trung bị viết lại, fingerprint thay đổi và bản dịch cũ bị đánh dấu `stale`. Coordinator chỉ xem xét dịch lại khi fact đó ổn định và `auto_retranslate_on_rewrite` được bật; cài đặt mặc định `false` tránh phát sinh chi phí bất ngờ. Nếu bạn đóng CLI/headless, job đang dở không bị coi là hoàn tất; trạng thái đã lưu cho phép Coordinator đánh giá resume ở lần chạy sau.
+Nếu một chương nguồn tiếng Trung bị viết lại, fingerprint thay đổi và bản dịch cũ bị đánh dấu `stale`. Coordinator chỉ xem xét dịch lại khi fact đó ổn định và `auto_retranslate_on_rewrite` được bật; cài đặt mặc định `false` tránh phát sinh chi phí bất ngờ. Nếu bạn đóng server, job đang dở không bị coi là hoàn tất; trạng thái đã lưu cho phép Coordinator đánh giá resume ở lần chạy sau.
 
 ## Xuất bản bản Việt
 
-Sau khi có các chương đã dịch, dùng:
-
-```text
-/xuat ngonngu=vi
-```
-
-Lệnh chỉ xuất các chương có bản dịch `completed`, bỏ qua chương chưa dịch/lỗi/stale và báo số chương bị bỏ qua. Bản TXT mặc định được đặt tại `<thu-muc-tac-pham>/<ten-sach>-vi.txt`. Hiện bản dịch Việt hỗ trợ xuất TXT; export Trung ngữ vẫn hỗ trợ các định dạng vốn có.
+Sau khi có các chương đã dịch, vào trang **Đọc bản thảo** trên dashboard và bấm một trong bốn nút xuất: EPUB Trung, EPUB Việt, TXT Trung, TXT Việt. Bản Việt chỉ xuất các chương có bản dịch `completed`, bỏ qua chương chưa dịch/lỗi/stale và báo số chương bị bỏ qua. File download về máy và đồng thời được lưu tại `<thu-muc-tac-pham>/exports/`.
 
 ## Giới hạn và chi phí
 
-Coordinator và Translator đều gọi model nên tiêu thụ token. `translation.enabled` mặc định là `false` để dự án cũ không thay đổi hành vi. Cấu hình `budget_usd` hiện được lưu như policy riêng của nhánh dịch; trước khi dùng thực tế với tiểu thuyết dài, hãy chọn model phù hợp, theo dõi usage trong TUI và thử với một project ngắn.
+Coordinator và Translator đều gọi model nên tiêu thụ token. `translation.enabled` mặc định là `false` để dự án cũ không thay đổi hành vi. Cấu hình `budget_usd` hiện được lưu như policy riêng của nhánh dịch; trước khi dùng thực tế với tiểu thuyết dài, hãy chọn model phù hợp, theo dõi usage trên dashboard và thử với một project ngắn.
 
-Không có dịch vụ chạy 24/7 trong phiên bản này: công việc song song chỉ hoạt động khi tiến trình CLI/headless đang mở. Cơ chế checkpoint giúp tiếp tục sau khi ứng dụng được mở lại.
+Không có dịch vụ chạy 24/7 trong phiên bản này: công việc song song chỉ hoạt động khi tiến trình server đang mở. Cơ chế checkpoint giúp tiếp tục sau khi ứng dụng được mở lại.
 
 ## Kiểm thử
 

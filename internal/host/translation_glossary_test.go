@@ -26,3 +26,24 @@ func TestUpdateTranslationGlossaryIsAppendOnly(t *testing.T) {
 		t.Fatalf("want append-only error, got %v", err)
 	}
 }
+
+func TestTranslationPauseStateIsExposedByHost(t *testing.T) {
+	root := t.TempDir()
+	store := translation.NewStore(root)
+	if err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	h := &Host{translation: &translation.Controller{Store: store, Policy: translation.Policy{Enabled: true}}, events: make(chan Event, 4), eventSubs: make(map[chan Event]struct{})}
+	if err := h.PauseTranslation(); err != nil {
+		t.Fatal(err)
+	}
+	if !h.IsTranslationPaused() {
+		t.Fatal("Host must expose paused translation queue")
+	}
+	if err := h.ResumeTranslation(); err != nil {
+		t.Fatal(err)
+	}
+	if h.IsTranslationPaused() {
+		t.Fatal("Host must expose resumed translation queue")
+	}
+}

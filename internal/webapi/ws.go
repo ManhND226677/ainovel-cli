@@ -17,13 +17,14 @@ var dashboardUpgrader = websocket.Upgrader{
 }
 
 type socketMessage struct {
-	Type        string              `json:"type"`
-	State       *stateResponse      `json:"state,omitempty"`
-	Event       *eventResponse      `json:"event,omitempty"`
-	Events      []eventResponse     `json:"events,omitempty"`
-	Translation *translation.Status `json:"translation,omitempty"`
-	Error       string              `json:"error,omitempty"`
-	Reconnect   bool                `json:"reconnect,omitempty"`
+	Type         string                    `json:"type"`
+	State        *stateResponse            `json:"state,omitempty"`
+	Event        *eventResponse            `json:"event,omitempty"`
+	Events       []eventResponse           `json:"events,omitempty"`
+	Translation  *translation.Status       `json:"translation,omitempty"`
+	LiveProgress *translation.LiveProgress `json:"live_progress,omitempty"`
+	Error        string                    `json:"error,omitempty"`
+	Reconnect    bool                      `json:"reconnect,omitempty"`
 }
 
 func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +40,8 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 
 	updates, unsubscribe := s.runtime.SubscribeEvents()
 	defer unsubscribe()
+	progressUpdates, unsubscribeProgress := s.subscribeLiveProgress()
+	defer unsubscribeProgress()
 	out := make(chan socketMessage, 64)
 	writerDone := make(chan struct{})
 	clientDone := make(chan struct{})
@@ -99,6 +102,11 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 		if !queue(socketMessage{Type: "snapshot", State: &state, Events: replay}) {
 			return
 		}
+		for _, progress := range s.liveProgressSnapshot() {
+			if !queue(socketMessage{Type: "translation_progress", LiveProgress: &progress}) {
+				return
+			}
+		}
 	}
 
 	for {
@@ -115,6 +123,10 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			state = nextState
+		case progress := <-progressUpdates:
+			if !queue(socketMessage{Type: "translation_progress", LiveProgress: &progress}) {
+				return
+			}
 		case <-clientDone:
 			close(out)
 			<-writerDone
@@ -133,7 +145,9 @@ func (s *Server) currentState() stateResponse {
 	for _, agent := range snap.Agents {
 		agents = append(agents, toAgent(agent))
 	}
-	return stateResponse{Online: true, Snapshot: toSnapshot(snap), Agents: agents, Translation: s.translationSnapshot(), UpdatedAt: time.Now()}
+	out := toSnapshot(snap)
+	out.BookDir = s.runtime.ActiveBookDir()
+	return stateResponse{Online: true, Snapshot: out, Agents: agents, Translation: s.translationSnapshot(), TranslationPaused: s.runtime.IsTranslationPaused(), UpdatedAt: time.Now()}
 }
 
 func runtimeEvent(item domain.RuntimeQueueItem) eventResponse {
@@ -151,6 +165,8 @@ func liveEvent(event host.Event) eventResponse {
 	if event.Level == "error" || event.Category == "ERROR" {
 		priority = "control"
 	}
+	// Live host.Event has no runtime-queue seq; TaskID carries the call ID so the
+	// dashboard can key start/finish pairs without inventing colliding seq=0 rows.
 	return eventResponse{
 		Seq: 0, Time: event.Time, TaskID: event.ID, Agent: canonicalAgent(event.Agent),
 		Category: event.Category, Kind: event.Kind, Summary: event.Summary, Priority: priority,

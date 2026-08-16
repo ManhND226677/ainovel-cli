@@ -52,12 +52,30 @@ type Options struct {
 
 	// Overwrite 文件存在时是否覆盖；默认拒绝。
 	Overwrite bool
+
+	// Author / Description optional EPUB/package metadata (empty → defaults).
+	Author      string
+	Description string
+	// Title override (empty → progress.NovelName). Useful for VI display title.
+	Title string
+	// CoverImage optional raw image bytes (JPEG/PNG/WebP). Empty = text cover only.
+	CoverImage     []byte
+	CoverMediaType string // e.g. image/jpeg; inferred when empty
+
+	// RequireFullTitles when true (default for VI EPUB): fail the export if any
+	// chapter still lacks a real title after resolution (not just "Chương N").
+	// Set false only for emergency dumps.
+	AllowBareChapterTitles bool
 }
 
 // Deps 是 Run 所需依赖。仅 store；导出无需 LLM、prompt、bundle。
 type Deps struct {
 	Store       *store.Store
 	Translation *translation.Store // chỉ cần khi Options.Language = vi
+	// TitleResolver optional: when VI title still missing after body/glossary,
+	// Host may inject an LLM/batch resolver. Must be pure and concurrent-safe.
+	// Input is chapter→Chinese title; output chapter→Vietnamese title.
+	TitleResolver func(zhTitles map[int]string) (map[int]string, error)
 }
 
 // Result 是一次成功导出的产物摘要。

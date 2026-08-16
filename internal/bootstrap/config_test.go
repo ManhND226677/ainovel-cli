@@ -138,11 +138,11 @@ func TestTranslationConfigDefaultsAndGuards(t *testing.T) {
 	cfg.FillDefaults()
 	if cfg.Translation.MinStableChapters != 1 || cfg.Translation.MaxBatchChapters != 8 ||
 		cfg.Translation.MaxLagChapters != 24 || cfg.Translation.DebounceSeconds != 15 ||
-		cfg.Translation.MaxRetries != 3 || cfg.Translation.MaxConcurrentBatches != 1 {
+		cfg.Translation.MaxRetries != 3 || cfg.Translation.MaxConcurrentBatches != 3 {
 		t.Fatalf("unexpected translation defaults: %+v", cfg.Translation)
 	}
 
-	invalid := Config{
+	validParallel := Config{
 		Provider:  "openrouter",
 		ModelName: "test-model",
 		Providers: map[string]ProviderConfig{"openrouter": {APIKey: "sk-test-123456"}},
@@ -150,7 +150,12 @@ func TestTranslationConfigDefaultsAndGuards(t *testing.T) {
 			Enabled: true, MaxBatchChapters: 1, MaxConcurrentBatches: 2,
 		},
 	}
-	if err := invalid.ValidateBase(); !errors.Is(err, errs.ErrConfig) {
-		t.Fatalf("parallel translation batches should be rejected, got %v", err)
+	if err := validParallel.ValidateBase(); err != nil {
+		t.Fatalf("parallel translation workers in range should be accepted, got %v", err)
+	}
+	tooManyWorkers := validParallel
+	tooManyWorkers.Translation.MaxConcurrentBatches = 9
+	if err := tooManyWorkers.ValidateBase(); !errors.Is(err, errs.ErrConfig) {
+		t.Fatalf("translation workers above safety limit should be rejected, got %v", err)
 	}
 }

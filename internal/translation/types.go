@@ -62,13 +62,17 @@ type ChapterRecord struct {
 	State            ChapterState `json:"state"`
 	SourceSHA256     string       `json:"source_sha256"`
 	TranslatedSHA256 string       `json:"translated_sha256,omitempty"`
-	JobID            string       `json:"job_id,omitempty"`
-	GlossaryVersion  int          `json:"glossary_version,omitempty"`
-	Provider         string       `json:"provider,omitempty"`
-	Model            string       `json:"model,omitempty"`
-	Attempts         int          `json:"attempts,omitempty"`
-	LastError        string       `json:"last_error,omitempty"`
-	UpdatedAt        time.Time    `json:"updated_at"`
+	// Title is the Vietnamese chapter title used in TOC/export. Optional for
+	// legacy artifacts; export/backfill fills it so every completed chapter has one.
+	Title           string    `json:"title,omitempty"`
+	JobID           string    `json:"job_id,omitempty"`
+	GlossaryVersion int       `json:"glossary_version,omitempty"`
+	Provider        string    `json:"provider,omitempty"`
+	Model           string    `json:"model,omitempty"`
+	Attempts        int       `json:"attempts,omitempty"`
+	Instruction     string    `json:"instruction,omitempty"`
+	LastError       string    `json:"last_error,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // GlossaryEntry locks a translation choice once committed. Source references

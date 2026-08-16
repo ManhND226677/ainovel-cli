@@ -122,6 +122,16 @@ func newObserver(s *storepkg.Store, emitEv func(Event), emitD func(string), emit
 	}
 }
 
+// rebindStore updates the store used for runtime queue persistence after a book switch.
+func (o *observer) rebindStore(s *storepkg.Store) {
+	if o == nil {
+		return
+	}
+	o.agentMu.Lock()
+	o.store = s
+	o.agentMu.Unlock()
+}
+
 // ── Engine 直驱入口 ──
 //
 // Engine 直接运行 Worker，事件来源分为两条:
@@ -225,6 +235,8 @@ func (o *observer) persistEvent(ev Event) {
 		Time:     ev.Time,
 		Kind:     domain.RuntimeQueueUIEvent,
 		Priority: priority,
+		TaskID:   ev.ID,
+		Agent:    ev.Agent,
 		Category: ev.Category,
 		Summary:  ev.Summary,
 		Payload:  ev,

@@ -126,6 +126,17 @@ func NewUsageTracker(set *bootstrap.ModelSet, store *storepkg.Store) *UsageTrack
 	}
 }
 
+// RebindStore points future usage persistence at a new book root (library switch).
+// In-memory totals stay session-global; only the durable path changes.
+func (t *UsageTracker) RebindStore(store *storepkg.Store) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	t.store = store
+	t.mu.Unlock()
+}
+
 // Record 把一条 agent 消息分发到累加 / 诊断两条路径。
 //
 // 累加只看 Usage 是否存在——"哪条消息带 Usage" 是 agentcore/litellm adapter

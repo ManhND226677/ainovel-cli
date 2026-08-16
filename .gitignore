@@ -44,3 +44,9 @@ tasks
 refer/
 output*
 workspace/
+
+# Dữ liệu truyện runtime (multi-book library) — không commit nội dung tác phẩm
+library/
+
+# Agent session artifacts
+.zcode/

@@ -371,8 +371,8 @@ func (c *Config) ValidateBase() error {
 	if c.Translation.IsEnabled() && c.Translation.MaxBatchChapters == 0 {
 		return fmt.Errorf("translation.max_batch_chapters must be > 0 when enabled: %w", errs.ErrConfig)
 	}
-	if c.Translation.IsEnabled() && c.Translation.MaxConcurrentBatches != 1 {
-		return fmt.Errorf("translation.max_concurrent_batches must be 1: %w", errs.ErrConfig)
+	if c.Translation.IsEnabled() && (c.Translation.MaxConcurrentBatches < 1 || c.Translation.MaxConcurrentBatches > 8) {
+		return fmt.Errorf("translation.max_concurrent_batches must be between 1 and 8: %w", errs.ErrConfig)
 	}
 
 	// 校验告警配置
@@ -480,7 +480,7 @@ func (c *Config) FillDefaults() {
 			c.Translation.MaxRetries = 3
 		}
 		if c.Translation.MaxConcurrentBatches == 0 {
-			c.Translation.MaxConcurrentBatches = 1
+			c.Translation.MaxConcurrentBatches = 3
 		}
 	}
 }

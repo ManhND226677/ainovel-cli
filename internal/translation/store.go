@@ -101,6 +101,32 @@ func (s *Store) SaveStatus(status Status) error {
 	return s.writeJSONUnlocked(statusPath, status)
 }
 
+// SetChapterInstruction persists a user intervention for the next processing
+// attempt. This metadata never changes the Chinese source artifact.
+func (s *Store) SetChapterInstruction(chapter int, instruction string) (ChapterRecord, error) {
+	if chapter <= 0 {
+		return ChapterRecord{}, fmt.Errorf("chapter must be positive")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status, err := s.loadStatusUnlocked()
+	if err != nil {
+		return ChapterRecord{}, err
+	}
+	record, ok := status.Chapters[chapter]
+	if !ok {
+		return ChapterRecord{}, fmt.Errorf("chapter %d is not in translation queue", chapter)
+	}
+	record.Instruction = strings.TrimSpace(instruction)
+	record.UpdatedAt = time.Now().UTC()
+	status.Chapters[chapter] = record
+	status.UpdatedAt = record.UpdatedAt
+	if err := s.writeJSONUnlocked(statusPath, status); err != nil {
+		return ChapterRecord{}, err
+	}
+	return record, nil
+}
+
 func (s *Store) LoadGlossary() (Glossary, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -169,7 +195,8 @@ func (s *Store) MergeGlossary(chapter int, candidates []GlossaryCandidate) (Glos
 
 // CommitChapter atomically writes the Vietnamese text and updates its status
 // metadata. The caller must re-check the source fingerprint before invoking it.
-func (s *Store) CommitChapter(source SourceChapter, text, provider, model, jobID string, glossaryVersion int) (ChapterRecord, error) {
+// title may be empty; when empty, a heading is extracted from the body if present.
+func (s *Store) CommitChapter(source SourceChapter, text, provider, model, jobID string, glossaryVersion int, title string) (ChapterRecord, error) {
 	if source.Number <= 0 || source.SHA256 == "" {
 		return ChapterRecord{}, fmt.Errorf("invalid source chapter")
 	}
@@ -182,11 +209,22 @@ func (s *Store) CommitChapter(source SourceChapter, text, provider, model, jobID
 	if err != nil {
 		return ChapterRecord{}, err
 	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = ExtractTitleFromBody(text)
+	}
+	// Preserve previous title if new commit did not yield one.
+	if title == "" {
+		if prev, ok := status.Chapters[source.Number]; ok {
+			title = strings.TrimSpace(prev.Title)
+		}
+	}
 	record := ChapterRecord{
 		Chapter:          source.Number,
 		State:            ChapterCompleted,
 		SourceSHA256:     source.SHA256,
 		TranslatedSHA256: Digest(text),
+		Title:            title,
 		JobID:            jobID,
 		GlossaryVersion:  glossaryVersion,
 		Provider:         provider,
@@ -203,6 +241,48 @@ func (s *Store) CommitChapter(source SourceChapter, text, provider, model, jobID
 		return ChapterRecord{}, err
 	}
 	return record, nil
+}
+
+// SetChapterTitles merges Vietnamese titles into completed chapter records.
+// Empty values are ignored. Returns how many records were updated.
+func (s *Store) SetChapterTitles(titles map[int]string) (int, error) {
+	if s == nil || len(titles) == 0 {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status, err := s.loadStatusUnlocked()
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	now := time.Now().UTC()
+	for ch, title := range titles {
+		title = strings.TrimSpace(title)
+		if ch <= 0 || title == "" {
+			continue
+		}
+		rec, ok := status.Chapters[ch]
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(rec.Title) == title {
+			continue
+		}
+		rec.Title = title
+		rec.UpdatedAt = now
+		status.Chapters[ch] = rec
+		n++
+	}
+	if n == 0 {
+		return 0, nil
+	}
+	status.SchemaVersion = schemaVersion
+	status.UpdatedAt = now
+	if err := s.writeJSONUnlocked(statusPath, status); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func (s *Store) LoadChapter(chapter int) (string, ChapterRecord, error) {
@@ -323,6 +403,50 @@ func (s *Store) UpdateJob(job Job) error {
 	status.Jobs[job.ID] = job
 	status.UpdatedAt = job.UpdatedAt
 	return s.writeJSONUnlocked(statusPath, status)
+}
+
+// RecoverInterruptedJobs converts only orphaned in-flight state left by a
+// process restart into retryable failures. It never changes Chinese source or
+// completed Vietnamese artifacts. A subsequent queue pass creates a fresh job
+// and preserves the original source fingerprint for every recovered chapter.
+func (s *Store) RecoverInterruptedJobs() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status, err := s.loadStatusUnlocked()
+	if err != nil {
+		return 0, err
+	}
+	now := time.Now().UTC()
+	const reason = "translation engine restarted while this chapter was running; safe retry required"
+	recovered := 0
+	for id, job := range status.Jobs {
+		if job.State != JobQueued && job.State != JobRunning {
+			continue
+		}
+		job.State = JobFailed
+		job.LastError = reason
+		job.UpdatedAt = now
+		status.Jobs[id] = job
+		recovered++
+	}
+	for chapter, record := range status.Chapters {
+		if record.State != ChapterRunning {
+			continue
+		}
+		record.State = ChapterFailed
+		record.LastError = reason
+		record.UpdatedAt = now
+		status.Chapters[chapter] = record
+		recovered++
+	}
+	if recovered == 0 {
+		return 0, nil
+	}
+	status.UpdatedAt = now
+	if err := s.writeJSONUnlocked(statusPath, status); err != nil {
+		return 0, err
+	}
+	return recovered, nil
 }
 
 // MarkStale marks a committed translation invalid whenever the corresponding

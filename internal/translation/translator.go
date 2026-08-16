@@ -32,6 +32,7 @@ type TranslationRequest struct {
 	ChineseText        string                   `json:"chinese_text"`
 	Glossary           map[string]GlossaryEntry `json:"glossary"`
 	PreviousVietnamese string                   `json:"previous_vietnamese,omitempty"`
+	Instruction        string                   `json:"instruction,omitempty"`
 }
 
 // GlossaryCandidate is a proposed new locked term from a translated chapter.
@@ -76,6 +77,59 @@ func Translate(ctx context.Context, model agentcore.ChatModel, systemPrompt stri
 	})
 	if err != nil {
 		return TranslationResult{}, fmt.Errorf("translator: %w", err)
+	}
+	return TranslationResult(response), nil
+}
+
+// TranslateWithPreview mirrors Translate but forwards raw text deltas to a
+// local observer. The final JSON is still schema-decoded and mechanically
+// validated before it can become a Vietnamese artifact. Providers that do not
+// support streaming transparently fall back to the durable non-stream path.
+func TranslateWithPreview(ctx context.Context, model agentcore.ChatModel, systemPrompt string, request TranslationRequest, onDelta func(string)) (TranslationResult, error) {
+	if onDelta == nil {
+		return Translate(ctx, model, systemPrompt, request)
+	}
+	if model == nil || request.Chapter <= 0 || strings.TrimSpace(request.ChineseText) == "" {
+		return Translate(ctx, model, systemPrompt, request)
+	}
+	payload, err := json.MarshalIndent(request, "", "  ")
+	if err != nil {
+		return TranslationResult{}, fmt.Errorf("marshal translation request: %w", err)
+	}
+	schemaOptions, resolution := llmcontract.Plan(model, translatorContract)
+	prompt, err := llmcontract.PreparePrompt(systemPrompt, translatorContract, resolution)
+	if err != nil {
+		return TranslationResult{}, fmt.Errorf("prepare translation stream: %w", err)
+	}
+	stream, err := model.GenerateStream(ctx, []agentcore.Message{agentcore.SystemMsg(prompt), agentcore.UserMsg(string(payload))}, nil, append(schemaOptions, agentcore.WithMaxTokens(translatorMaxTokens))...)
+	if err != nil {
+		return Translate(ctx, model, systemPrompt, request)
+	}
+	var raw strings.Builder
+	for event := range stream {
+		switch event.Type {
+		case agentcore.StreamEventTextDelta:
+			raw.WriteString(event.Delta)
+			onDelta(event.Delta)
+		case agentcore.StreamEventDone:
+			if raw.Len() == 0 {
+				raw.WriteString(event.Message.TextContent())
+				onDelta(event.Message.TextContent())
+			}
+			if event.StopReason != "" && event.StopReason != agentcore.StopReasonStop {
+				return Translate(ctx, model, systemPrompt, request)
+			}
+		case agentcore.StreamEventError:
+			return Translate(ctx, model, systemPrompt, request)
+		}
+	}
+	body := strings.TrimSpace(raw.String())
+	if resolution.Mode != llmcontract.ModeNativeJSONSchema {
+		body = llmcontract.ExtractJSONObject(body)
+	}
+	var response translationResponse
+	if body == "" || llmcontract.ValidateJSON(translatorContract.Schema, []byte(body)) != nil || json.Unmarshal([]byte(body), &response) != nil || ValidateText(request.ChineseText, response.Text) != nil || ValidateGlossary(response.Glossary) != nil {
+		return Translate(ctx, model, systemPrompt, request)
 	}
 	return TranslationResult(response), nil
 }

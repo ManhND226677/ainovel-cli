@@ -48,8 +48,8 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	if opts.Format != FormatTXT && opts.Format != FormatEPUB {
 		return nil, fmt.Errorf("exp: 暂不支持的格式 %q", opts.Format)
 	}
-	if language == LanguageVietnamese && opts.Format != FormatTXT {
-		return nil, fmt.Errorf("exp: Vietnamese export currently supports TXT only")
+	if language == LanguageVietnamese && opts.Format != FormatTXT && opts.Format != FormatEPUB {
+		return nil, fmt.Errorf("exp: Vietnamese export supports TXT and EPUB only")
 	}
 
 	progress, err := deps.Store.Progress.Load()
@@ -135,15 +135,22 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 
 	outPath := opts.OutPath
 	if outPath == "" {
-		name := strings.TrimSpace(progress.NovelName)
+		// Prefer caller/Host-resolved display title (VI name for Vietnamese export,
+		// ZH name for Chinese). Fall back to progress name, then directory base.
+		name := strings.TrimSpace(opts.Title)
+		zhName := strings.TrimSpace(progress.NovelName)
+		if name == "" {
+			name = zhName
+		}
 		if name == "" {
 			name = filepath.Base(deps.Store.Dir())
 		}
-		suffix := ""
-		if language == LanguageVietnamese {
-			suffix = "-vi"
+		// If VI export still only has the Chinese title, mark the file so it does
+		// not clobber the ZH package sitting next to it.
+		if language == LanguageVietnamese && zhName != "" && name == zhName {
+			name = name + " VI"
 		}
-		outPath = filepath.Join(deps.Store.Dir(), sanitizeFileName(name)+suffix+"."+string(opts.Format))
+		outPath = filepath.Join(deps.Store.Dir(), sanitizeFileName(name)+"."+string(opts.Format))
 	}
 
 	if !opts.Overwrite {
@@ -154,34 +161,85 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 		}
 	}
 
-	titleIdx := buildTitleIndex(outline)
-	if language == LanguageVietnamese {
-		titleIdx = make(chapterTitleIndex)
-	}
+	// Every exported chapter must carry a full title in titleIdx (never bare "Chương N"
+	// / "第 N 章" when a name exists in summaries or can be resolved for VI).
+	titleIdx := make(chapterTitleIndex)
+	var locations map[int]chapterLocation
+	// Always load ZH titles from outline + summaries — used as SoT and as input
+	// for Vietnamese title resolution.
+	zhTitles := buildTitleIndex(outline)
 	for _, ch := range chapters {
 		summary, err := deps.Store.Summaries.LoadSummary(ch)
 		if err != nil {
 			return nil, fmt.Errorf("读取第 %d 章摘要失败：%w", ch, err)
 		}
 		if summary != nil && strings.TrimSpace(summary.Title) != "" {
-			titleIdx[ch] = summary.Title
+			zhTitles[ch] = strings.TrimSpace(summary.Title)
 		}
 	}
-	var locations map[int]chapterLocation
-	if language == LanguageChinese && len(volumes) > 0 {
-		locations = buildLocations(volumes)
+	if language == LanguageChinese {
+		titleIdx = zhTitles
+		if len(volumes) > 0 {
+			locations = buildLocations(volumes)
+		}
+	} else if language == LanguageVietnamese {
+		titleIdx, bodies = resolveVietnameseTitles(deps, chapters, bodies, zhTitles, translated)
+	}
+	// Normalize titles: never store the bare chapter label inside titleIdx
+	// (chapterLabel already prefixes "Chương N" / "第 N 章"). Empty title → bare label only.
+	var missingTitles []int
+	for _, ch := range chapters {
+		t := normalizeExportTitle(ch, language, titleIdx[ch])
+		if t == "" && language == LanguageChinese {
+			t = normalizeExportTitle(ch, language, zhTitles[ch])
+		}
+		if t != "" {
+			titleIdx[ch] = t
+		} else {
+			delete(titleIdx, ch)
+			missingTitles = append(missingTitles, ch)
+		}
+	}
+	// Vietnamese EPUB/TXT: require real titles for every chapter by default.
+	if language == LanguageVietnamese && !opts.AllowBareChapterTitles && len(missingTitles) > 0 {
+		sample := missingTitles
+		if len(sample) > 12 {
+			sample = sample[:12]
+		}
+		return nil, fmt.Errorf(
+			"còn %d chương chưa có tiêu đề tiếng Việt (vd. %v). "+
+				"Kiểm tra model translator / thử export lại; hoặc glossary chưa đủ để suy title",
+			len(missingTitles), sample,
+		)
+	}
+
+	bookTitle := strings.TrimSpace(opts.Title)
+	if bookTitle == "" {
+		bookTitle = strings.TrimSpace(progress.NovelName)
+	}
+	author := strings.TrimSpace(opts.Author)
+	if author == "" {
+		author = "ainovel-cli"
 	}
 
 	var data []byte
 	switch opts.Format {
 	case FormatTXT:
 		if language == LanguageVietnamese {
-			data = []byte(renderVietnameseTXT(chapters, bodies))
+			data = []byte(renderVietnameseTXT(chapters, titleIdx, bodies))
 		} else {
-			data = []byte(renderTXT(progress.NovelName, chapters, titleIdx, locations, bodies))
+			data = []byte(renderTXT(bookTitle, chapters, titleIdx, locations, bodies))
 		}
 	case FormatEPUB:
-		buf, err := renderEPUB(progress.NovelName, chapters, titleIdx, locations, bodies)
+		meta := epubMeta{
+			Title:          bookTitle,
+			Author:         author,
+			Description:    strings.TrimSpace(opts.Description),
+			Language:       language,
+			CoverImage:     opts.CoverImage,
+			CoverMediaType: opts.CoverMediaType,
+		}
+		buf, err := renderEPUB(meta, chapters, titleIdx, locations, bodies)
 		if err != nil {
 			return nil, fmt.Errorf("渲染 EPUB 失败：%w", err)
 		}
@@ -246,6 +304,12 @@ func atomicWrite(path string, data []byte) error {
 	return os.Rename(tmpPath, path)
 }
 
+// SanitizeFileName replaces characters that are illegal or awkward on common
+// filesystems. Exported so the web API can build download paths consistently.
+func SanitizeFileName(name string) string {
+	return sanitizeFileName(name)
+}
+
 // sanitizeFileName 替换文件名里在大多数文件系统上不允许或易混淆的字符。
 // 不做激进的转码，只挡住路径分隔符和控制字符。
 func sanitizeFileName(name string) string {
@@ -253,10 +317,12 @@ func sanitizeFileName(name string) string {
 	if name == "" {
 		return "novel"
 	}
+	// Normalize fancy separators often used in titles.
+	name = strings.ReplaceAll(name, "：", " - ")
+	name = strings.ReplaceAll(name, ":", " - ")
 	replacer := strings.NewReplacer(
 		"/", "_",
 		"\\", "_",
-		":", "_",
 		"*", "_",
 		"?", "_",
 		"\"", "_",
@@ -265,5 +331,18 @@ func sanitizeFileName(name string) string {
 		"|", "_",
 		"\x00", "_",
 	)
-	return replacer.Replace(name)
+	name = replacer.Replace(name)
+	// Collapse whitespace
+	name = strings.Join(strings.Fields(name), " ")
+	name = strings.Trim(name, " .-_")
+	if name == "" {
+		return "novel"
+	}
+	// Keep names readable but bounded for Windows MAX_PATH friendliness.
+	runes := []rune(name)
+	if len(runes) > 120 {
+		name = string(runes[:120])
+		name = strings.Trim(name, " .-_")
+	}
+	return name
 }

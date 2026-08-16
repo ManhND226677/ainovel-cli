@@ -297,7 +297,7 @@ func TestSanitizeFileName(t *testing.T) {
 		"normal":               "normal",
 		"a/b":                  "a_b",
 		"a\\b":                 "a_b",
-		"a:b*c?\"d<e>f|g\x00h": "a_b_c__d_e_f_g_h",
+		"a:b*c?\"d<e>f|g\x00h": "a - b_c__d_e_f_g_h",
 	}
 	for in, want := range cases {
 		if got := sanitizeFileName(in); got != want {
@@ -324,16 +324,19 @@ func TestRun_VietnameseTXTUsesTranslationArtifacts(t *testing.T) {
 		if err := translations.StartChapter(job.ID, source); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := translations.CommitChapter(source, vietnamese, "p", "m", job.ID, 1); err != nil {
+		if _, err := translations.CommitChapter(source, vietnamese, "p", "m", job.ID, 1, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	res, err := Run(context.Background(), Deps{Store: s, Translation: translations}, Options{Language: LanguageVietnamese})
+	res, err := Run(context.Background(), Deps{Store: s, Translation: translations}, Options{
+		Language:               LanguageVietnamese,
+		AllowBareChapterTitles: true, // unit fixture has no title backfill
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := filepath.Base(res.Path), "光斑-vi.txt"; got != want {
+	if got, want := filepath.Base(res.Path), "光斑 VI.txt"; got != want {
 		t.Fatalf("Vietnamese default path = %q, want %q", got, want)
 	}
 	if res.Chapters != 1 || len(res.Skipped) != 1 || res.Skipped[0] != 2 {

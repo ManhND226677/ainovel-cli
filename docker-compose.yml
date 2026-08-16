@@ -3,8 +3,10 @@ services:
     image: ghcr.io/voocel/ainovel-cli:latest
     build:
       context: .
+    ports:
+      - "10001:10001"
     volumes:
       - ./config:/root/.ainovel
       - ./workspace:/workspace
-    stdin_open: true
-    tty: true
+    command: web --addr 0.0.0.0:10001
+    restart: unless-stopped
